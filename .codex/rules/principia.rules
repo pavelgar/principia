@@ -18,9 +18,28 @@ prefix_rule(
 )
 
 prefix_rule(
+    pattern = [["scripts/test-agent-guard.sh", "scripts/check-skills.sh", "scripts/stop-check.sh"]],
+    decision = "allow",
+    justification = "The repo's self-checks: the guard's tests, the skill symlinks, and the Stop hook's quickCheck.",
+)
+
+prefix_rule(
     pattern = ["git", ["status", "diff", "log", "show"]],
     decision = "allow",
     justification = "Read-only git commands.",
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "checks"],
+    decision = "allow",
+    justification = "Reads a PR's CI checks, to wait for them before calling the work done.",
+)
+
+prefix_rule(
+    pattern = ["gh", "run", ["view", "download"]],
+    decision = "allow",
+    justification = "Reads CI logs and downloads CI's evidence (screenshots, game-test logs, crash reports).",
+    match = [["gh", "run", "view", "123", "--log-failed"], ["gh", "run", "download", "123", "-n", "client-game-test-output"]],
 )
 
 # Defence in depth for scripts/agent-guard.sh, in case the hook isn't active.

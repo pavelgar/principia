@@ -8,6 +8,7 @@
 #   .references/VERSIONS            what the tree was generated from
 #
 # Re-run after changing versions in gradle/libs.versions.toml. Safe to run repeatedly.
+# Arguments go to Gradle: with less than 6 GB of RAM, `scripts/setup.sh -Pdecompiler_memory=2048 -Pdecompiler_threads=2`.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -16,7 +17,7 @@ mc_version=$(sed -n 's/^minecraft *= *"\(.*\)"/\1/p' gradle/libs.versions.toml)
 fabric_api_version=$(sed -n 's/^fabric-api *= *"\(.*\)"/\1/p' gradle/libs.versions.toml)
 
 echo "==> Decompiling Minecraft $mc_version and exporting library sources"
-./gradlew --console=plain -q genSources exportLibrarySources
+./gradlew --console=plain -q genSources exportLibrarySources "$@"
 
 unpack() { # unpack <dest> <jar>...  (Java sources only)
 	local dest=$1; shift

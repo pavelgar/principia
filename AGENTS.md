@@ -35,7 +35,7 @@ Gradle tasks in one checkout run one at a time; different worktrees may build in
 - `scripts/client-gametest.sh` (`--only=<Class>` for one test class) runs the client game tests (headless when `xvfb-run` is installed, in a window otherwise) and copies the screenshots and the log to the `build/evidence/...` folder it prints. It is not part of `build`.
 - `scripts/play.sh [scene]` starts the game straight into this checkout's playtest world and builds the scene beside the player. It never exits, so the guard blocks it for agents; `PlaytestClientGameTest` builds and screenshots every scene.
 - `./gradlew pitest -Ppit_target=<package>.<Class>*` mutates those classes, runs their package's JUnit tests against each mutant, and lists the mutants no test noticed, each with what it changed, in `build/reports/pitest/mutations.xml`. Tests that need Fabric Loader fail under it. It is not part of `build`.
-- `./gradlew fuzzTest` runs the Jazzer fuzz tests (`@FuzzTest` in `<Class>FuzzTest`) on the inputs saved under `src/test/resources/<package>/<Class>FuzzTestInputs/<method>/`; `build` runs it. With `JAZZER_FUZZ=1` and `--tests '*<Class>FuzzTest.<method>'`, one method at a time, it searches for an input that fails, for up to the test's `maxDuration`, and saves one it finds there. Fuzz tests run without Fabric Loader, as under PIT.
+- `./gradlew fuzzTest` runs the Jazzer fuzz tests (`@FuzzTest` in `<Class>FuzzTest`) on the inputs saved under `src/test/resources/<package>/<Class>FuzzTestInputs/<method>/`; `build` runs it. With `-Pfuzz` and `--tests '*<Class>FuzzTest.<method>'`, one method at a time, it searches for an input that fails, for up to the test's `maxDuration`, and saves one it finds there. Fuzz tests run without Fabric Loader, as under PIT.
 - `./gradlew runDatagen` regenerates `src/main/generated/` after a datagen provider changed. It fails when a registered block or item lacks a loot table, blockstate or model.
 
 Checks that fail on their own:
@@ -47,7 +47,8 @@ When something else fails, look at Gradle's output and `build/reports/`, the gam
 ## Several checkouts at once
 
 - Client game tests run in parallel across worktrees (about 2 GB of RAM each). A game test that starts a *dedicated server* takes a free `server-port` (`freePort()` in `DedicatedServerClientGameTest`), or it collides with other worktrees' on 25565.
-- With less than 6 GB of RAM, run genSources with `ORG_GRADLE_PROJECT_decompiler_memory=2048 ORG_GRADLE_PROJECT_decompiler_threads=2` or it gets OOM-killed.
+- With less than 6 GB of RAM, run `scripts/setup.sh -Pdecompiler_memory=2048 -Pdecompiler_threads=2` or genSources gets OOM-killed.
+- Give Gradle settings as `-P` properties, never a leading `VAR=value`: the command rules of Claude Code and Codex match a command by how it starts, and Codex can't match one that starts with an assignment.
 
 ## Agent tooling
 

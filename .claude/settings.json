@@ -2,8 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(./gradlew *)",
-      "Bash(scripts/setup.sh)",
+      "Bash(scripts/setup.sh*)",
       "Bash(scripts/client-gametest.sh*)",
+      "Bash(scripts/test-agent-guard.sh)",
+      "Bash(scripts/check-skills.sh)",
+      "Bash(scripts/stop-check.sh)",
+      "Bash(gh pr checks *)",
+      "Bash(gh run view *)",
+      "Bash(gh run download *)",
       "Bash(git status *)",
       "Bash(git diff *)",
       "Bash(git log *)",

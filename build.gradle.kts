@@ -238,18 +238,26 @@ tasks.test {
 	exclude("**/*FuzzTest*")
 }
 
-// Jazzer fuzz tests (`*FuzzTest`, part of `check`) replay the inputs saved under src/test/resources; with JAZZER_FUZZ=1
-// they search for new ones, one test method at a time (`--tests '*<Class>.<method>'`): Jazzer fuzzes only one per run.
+// Jazzer fuzz tests (`*FuzzTest`, part of `check`) replay the inputs saved under src/test/resources; with -Pfuzz they
+// search for new ones, one test method at a time (`--tests '*<Class>.<method>'`): Jazzer fuzzes only one per run.
+// -Pfuzz sets Jazzer's JAZZER_FUZZ=1 for the tests, and a JAZZER_FUZZ already in the environment still works; the
+// property keeps the command a plain `./gradlew ...`, which agents' command rules can match (Codex's can't match a
+// command that starts with an assignment).
 // They run without Fabric Loader's JUnit hook: under Knot, Jazzer's native driver is loaded twice and crashes. So, as
 // under PIT, they can't use Fabric Loader.
-val fuzzTest by tasks.registering(Test::class) {
+val fuzzTest = tasks.register<Test>("fuzzTest") {
 	description = "Runs the Jazzer fuzz tests."
 	group = "verification"
 	testClassesDirs = sourceSets.test.get().output.classesDirs
 	classpath = sourceSets.test.get().runtimeClasspath.filter { !it.name.startsWith("fabric-loader-junit") }
 	include("**/*FuzzTest*")
+	val fuzzProperty = providers.gradleProperty("fuzz").map { it.isEmpty() || it.toBoolean() }.orElse(false)
+	if (fuzzProperty.get()) {
+		environment("JAZZER_FUZZ", "1")
+	}
 	// A fuzzing run searches anew each time, so it is never up to date nor taken from the build cache.
 	val fuzzing = providers.environmentVariable("JAZZER_FUZZ").map { it.isNotEmpty() && it != "0" }.orElse(false)
+		.zip(fuzzProperty) { env, property -> env || property }
 	inputs.property("fuzzing", fuzzing)
 	outputs.upToDateWhen { !fuzzing.get() }
 	outputs.cacheIf { !fuzzing.get() }
