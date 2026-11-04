@@ -44,6 +44,22 @@ Checks that fail on their own:
 
 When something else fails, look at Gradle's output and `build/reports/`, the game-test logs (`build/run/gameTest/logs/latest.log`, `build/run/clientGameTest/logs/latest.log`) and, for `runClient` sessions, `run/logs/latest.log` and `run/crash-reports/`. In a log, search for `Caused by:`, `Registry`, and the first `ERROR` after `Principia initialized`.
 
+## Done
+
+A change is done when `scripts/verify.sh` ends in `RESULT: PASS`. It runs what CI runs, on the checkout as it is: the repo's self-checks, `build`, datagen staleness, and the client game tests against the jar when the change reaches them (`--client` to force). `build/verify/verify.json` has the same result, each step and the evidence folder. Run it before a PR, after `quickCheck` and the tests below pass.
+
+Each kind of change also needs its evidence, a test that fails without the change:
+
+| Change | Evidence |
+|---|---|
+| Logic that needs no game (geometry, physics, codecs) | A JUnit test; a `@FuzzTest` where the inputs are too many to list |
+| Behaviour in the world | A server game test that also passes `-Pgametest=<its id> -Pgametest_repeat=100` |
+| What a client sends, or what players share | A client game test against a dedicated server (`SkyHookDedicatedServerClientGameTest`) |
+| What players see | A client game test asserting the render state, and its screenshots looked at and described in the PR |
+| Blocks, items, recipes, assets | `runDatagen` with its output committed, and `RegistrationGameTest` passing |
+
+The PR, titled as in [Commits](#commits), fills in `.github/pull_request_template.md`: the Summary (for a `feat`, `fix` or `perf`, what the release notes say), the `RESULT` line, the screenshots, and every test changed with the behaviour change it follows.
+
 ## Several checkouts at once
 
 - Client game tests run in parallel across worktrees (about 2 GB of RAM each). A game test that starts a *dedicated server* takes a free `server-port` (`freePort()` in `DedicatedServerClientGameTest`), or it collides with other worktrees' on 25565.
@@ -54,6 +70,7 @@ When something else fails, look at Gradle's output and `build/reports/`, the gam
 
 - This file is the only instruction file. Claude Code reads `AGENTS.md` natively, and a `CLAUDE.md` or `CLAUDE.local.md` would stop that.
 - Each skill in `.agents/skills/` (Codex) has a symlink in `.claude/skills/` (Claude Code); `scripts/check-skills.sh` checks it in CI.
+- `scripts/stop-check.sh` is both tools' Stop hook: when a turn changed code, it runs `quickCheck` and sends the agent back with the first errors.
 - `scripts/agent-guard.sh` blocks commands that hang or reach other worktrees, live publishing, and pushing tags or making releases (the human releases); `scripts/test-agent-guard.sh` tests it. Command permissions live in `.claude/settings.json` and `.codex/rules/principia.rules`.
 - When the jdtls plugin (Java language server) is on, hover on a Minecraft or Fabric call gives its exact signature, and go-to-definition works within `src/`. It can't open library classes, so read those in `.references/sources/`.
 

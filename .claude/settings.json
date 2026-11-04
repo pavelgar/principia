@@ -7,6 +7,7 @@
       "Bash(scripts/test-agent-guard.sh)",
       "Bash(scripts/check-skills.sh)",
       "Bash(scripts/stop-check.sh)",
+      "Bash(scripts/verify.sh*)",
       "Bash(gh pr checks *)",
       "Bash(gh run view *)",
       "Bash(gh run download *)",

@@ -41,17 +41,9 @@ if ./gradlew quickCheck --console=plain > "$log" 2>&1; then
 fi
 echo "$now" > "$state/failed"
 
+. scripts/lib/failures.sh
 {
 	echo "./gradlew quickCheck failed on the changes in this turn; fix this before finishing. Full output: $log"
-	echo
-	# Compiler errors (javac, Error Prone, NullAway) as javac prints them, each with its source line and caret; Gradle
-	# repeats them indented in its summary, which is skipped.
-	grep -E -A2 '^/.*\.java:[0-9]+: (error|warning):' "$log" | head -n 45
-	# Failed tests (`Class > method() FAILED`, not `> Task :x FAILED`), with their assertion message and first frames.
-	grep -E -A8 '^[^>].* > .* FAILED$' "$log" | head -n 45
-	# Anything else (formatting, a Gradle error): Gradle's own failure summary.
-	if ! grep -qE '^/.*\.java:[0-9]+: (error|warning):|^[^>].* > .* FAILED$' "$log"; then
-		sed -n '/^\* What went wrong:/,/^\* Try:/p' "$log" | head -n 30
-	fi
+	gradle_failures "$log"
 } >&2
 exit 2

@@ -62,8 +62,8 @@ jobs:
           esac
           if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             run=true
-          elif git diff --name-only "$base" HEAD | grep -qE \
-            '^(src/|gradle/|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|gradlew(\.bat)?$|scripts/client-gametest\.sh$|\.github/workflows/build\.yml$)'; then
+          # The paths the client tests exercise; scripts/verify.sh decides from the same file.
+          elif git diff --name-only "$base" HEAD | grep -qEf scripts/lib/client-test-paths; then
             run=true
           else
             run=false
