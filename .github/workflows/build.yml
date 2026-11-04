@@ -101,7 +101,7 @@ jobs:
         run: echo "key=apt-${ImageOS:?}-${ImageVersion:?}-${APT_PACKAGES// /-}" >> "$GITHUB_OUTPUT"
       - if: steps.client.outputs.run == 'true'
         id: apt
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/apt-debs
           key: ${{ steps.apt-key.outputs.key }}
@@ -163,7 +163,7 @@ jobs:
       - id: apt-key
         run: echo "key=apt-${ImageOS:?}-${ImageVersion:?}-${APT_PACKAGES// /-}" >> "$GITHUB_OUTPUT"
       - id: apt
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/apt-debs
           key: ${{ steps.apt-key.outputs.key }}
@@ -178,7 +178,7 @@ jobs:
           cp /var/cache/apt/archives/*.deb ~/apt-debs/
           ls -l ~/apt-debs
       - if: steps.apt.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: ~/apt-debs
           key: ${{ steps.apt-key.outputs.key }}
