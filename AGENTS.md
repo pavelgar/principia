@@ -57,6 +57,15 @@ When something else fails, look at Gradle's output and `build/reports/`, the gam
 - `scripts/agent-guard.sh` blocks commands that hang or reach other worktrees, live publishing, and pushing tags or making releases (the human releases); `scripts/test-agent-guard.sh` tests it. Command permissions live in `.claude/settings.json` and `.codex/rules/principia.rules`.
 - When the jdtls plugin (Java language server) is on, hover on a Minecraft or Fabric call gives its exact signature, and go-to-definition works within `src/`. It can't open library classes, so read those in `.references/sources/`.
 
+## Commits
+
+PR titles, and the commit subjects that become them, are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `<type>[(<scope>)][!]: <description>`, with a type from `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `style`, `build`, `ci`, `chore` and `revert`. PRs are squash-merged, so the PR title becomes the commit on `*/dev`; the `pr-title` workflow checks it, and `gh pr edit --title` fixes it.
+- `feat`, `fix` and `perf` are what a player notices; the release notes are drafted from them. Tooling, tests and CI changes are `build`, `test`, `ci` or `chore`, even when they fix something.
+- The scope names the feature or area (`sky-line`, `sky-hook`, `gametest`, `agent-guard`), or leave it out.
+- The description is imperative and starts lowercase unless it starts with a name: `fix(sky-hook): keep the rider attached across chunk borders`.
+- `!` marks a change that breaks existing worlds, configs or servers on an older version; the PR description says what to do about it.
+- A revert is titled `revert: <the reverted title>`, not GitHub's `Revert "..."`.
+
 ## Conventions
 
 - `src/main/generated` is datagen output: to change it, change the provider and rerun `runDatagen`.
