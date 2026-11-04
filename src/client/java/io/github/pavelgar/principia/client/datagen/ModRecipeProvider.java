@@ -15,8 +15,13 @@ import net.minecraft.world.item.crafting.Recipe;
 
 import net.fabricmc.fabric.api.datagen.v1.FabricPackOutput;
 import net.fabricmc.fabric.api.datagen.v1.provider.FabricRecipeProvider;
+import net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags;
 
-/** Crafting and other recipes. Add a new item's or block's recipes in {@code buildRecipes}, using vanilla's {@link RecipeProvider} helpers. */
+/**
+ * Crafting and other recipes. Add a new item's or block's recipes in {@code buildRecipes}, using vanilla's {@link
+ * RecipeProvider} helpers. Ingredients are the {@code c:} tags of {@link ConventionalItemTags} where one exists, so
+ * other mods' iron or leather works too; unlocking stays on the vanilla item.
+ */
 public class ModRecipeProvider extends FabricRecipeProvider {
 	public ModRecipeProvider(FabricPackOutput output, CompletableFuture<HolderLookup.Provider> registriesFuture) {
 		super(output, registriesFuture);
@@ -30,7 +35,7 @@ public class ModRecipeProvider extends FabricRecipeProvider {
 			public void buildRecipes() {
 				// Vanilla's rail recipe without the stick: the two columns read as the two rails.
 				shaped(RecipeCategory.TRANSPORTATION, SkyLine.RAIL, 16)
-						.define('I', Items.IRON_INGOT)
+						.define('I', ConventionalItemTags.IRON_INGOTS)
 						.pattern("I I")
 						.pattern("I I")
 						.pattern("I I")
@@ -38,10 +43,10 @@ public class ModRecipeProvider extends FabricRecipeProvider {
 						.save(output);
 				// A gold ingot for an ornate touch.
 				shaped(RecipeCategory.TRANSPORTATION, SkyLine.HOOK)
-						.define('I', Items.IRON_INGOT)
+						.define('I', ConventionalItemTags.IRON_INGOTS)
 						.define('P', ItemTags.PLANKS)
-						.define('L', Items.LEATHER)
-						.define('G', Items.GOLD_INGOT)
+						.define('L', ConventionalItemTags.LEATHERS)
+						.define('G', ConventionalItemTags.GOLD_INGOTS)
 						.pattern("II ")
 						.pattern("IPL")
 						.pattern(" LG")

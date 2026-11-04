@@ -3,8 +3,11 @@
 	"package": "io.github.pavelgar.principia.test.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
+		"FabricGameTestRunnerMixin",
+		"GameTestServerMixin",
 		"MappedRegistryMixin",
-		"PayloadTypeRegistryImplMixin"
+		"PayloadTypeRegistryImplMixin",
+		"ServerGamePacketListenerImplAccessor"
 	],
 	"client": [
 		"FabricClientGameTestRunnerMixin",

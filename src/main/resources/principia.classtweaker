@@ -3,3 +3,7 @@ classTweaker v2 official
 # The arm a Sky-Hook rider raises to grip the rail: a pose of its own, which the client mixins
 # (io.github.pavelgar.principia.client.mixin.ArmPoseMixin) construct and apply.
 extend-enum net/minecraft/client/model/HumanoidModel$ArmPose PRINCIPIA_SKY_HOOK
+
+# Whether the server waits for a client to confirm a teleport, which vanilla's block use checks before acting
+# (io.github.pavelgar.principia.content.ClientActions checks it for the mod's own payloads).
+accessible field net/minecraft/server/network/ServerGamePacketListenerImpl awaitingPositionFromClient Lnet/minecraft/world/phys/Vec3;

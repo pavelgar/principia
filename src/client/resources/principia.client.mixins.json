@@ -9,8 +9,7 @@
 		"FirstPersonHandsAndItemsRendererMixin",
 		"HumanoidMobRendererMixin",
 		"HumanoidModelMixin",
-		"MinecraftMixin",
-		"MouseHandlerMixin"
+		"MinecraftMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -1,6 +1,7 @@
 package io.github.pavelgar.principia.skyline;
 
 import io.github.pavelgar.principia.Principia;
+import io.github.pavelgar.principia.content.ClientActions;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.world.entity.player.Player;
@@ -56,14 +57,23 @@ public final class SkyLineHooks {
 		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL
 				.register((player, origin, destination) -> select(player, null));
 		PayloadTypeRegistry.serverboundPlay().register(UseOnRailPayload.TYPE, UseOnRailPayload.STREAM_CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(UseOnRailPayload.TYPE,
-				(payload, context) -> SkyHook.useOnRail(context.player(), payload.hand(), payload.target()));
+		ServerPlayNetworking.registerGlobalReceiver(UseOnRailPayload.TYPE, (payload, context) -> {
+			if (ClientActions.accept(context.player())) {
+				SkyHook.useOnRail(context.player(), payload.hand(), payload.target());
+			}
+		});
 		PayloadTypeRegistry.serverboundPlay().register(LayTrackPayload.TYPE, LayTrackPayload.STREAM_CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(LayTrackPayload.TYPE, (payload, context) -> Placement
-				.lay(context.player(), payload.hand(), payload.hit(), payload.chosen()));
+		ServerPlayNetworking.registerGlobalReceiver(LayTrackPayload.TYPE, (payload, context) -> {
+			if (ClientActions.accept(context.player())) {
+				Placement.lay(context.player(), payload.hand(), payload.hit(), payload.chosen());
+			}
+		});
 		PayloadTypeRegistry.serverboundPlay().register(BreakRailPayload.TYPE, BreakRailPayload.STREAM_CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(BreakRailPayload.TYPE,
-				(payload, context) -> RailBreaking.breakRail(context.player(), payload.target()));
+		ServerPlayNetworking.registerGlobalReceiver(BreakRailPayload.TYPE, (payload, context) -> {
+			if (ClientActions.accept(context.player())) {
+				RailBreaking.breakRail(context.player(), payload.target());
+			}
+		});
 	}
 
 	static Track track(Level level) {

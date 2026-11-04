@@ -26,6 +26,7 @@ val gameTestArgs = listOf(
 	"-Dmixin.debug.verify=true", "-Dmixin.checks.interfaces=true",
 	"-Dfabric-tag-conventions-v2.missingTagTranslationWarning=VERBOSE",
 )
+val gameTestReport = layout.buildDirectory.file("test-results/gameTest/TEST-gametest.xml")
 
 repositories {
 	// Loom adds the Minecraft, Fabric and Maven Central repositories automatically.
@@ -75,6 +76,32 @@ loom {
 	// and list item tags that have no English name.
 	runs.matching { it.name == "gameTest" || it.name == "clientGameTest" }.configureEach {
 		jvmArguments.addAll(gameTestArgs)
+	}
+
+	// Server game tests (runGameTest):
+	//   -Pgametest=<text>        runs only the tests whose id contains <text>. Ids are the class and method in snake
+	//                            case: -Pgametest=sky_hook_game_test, -Pgametest=a_rider_at_speed_hops. A value with
+	//                            `*` or `?` is a pattern for the whole id instead (sky_hook_game_test_the_server_*);
+	//                            either way the namespace principia-test: is added unless the value has one.
+	//   -Pgametest_repeat=N      runs each test N times, to find flaky ones: a new test should pass with N=100. Tests
+	//                            that build outside their structure (chunk unloading) collide with their own copies.
+	//   -Pgametest_verify        vanilla's verify: 100 times in each of the 4 rotations. Only tests written to turn
+	//                            with their structure pass it; today's use world headings, so use repeat instead.
+	//   -Pgametest_origin=x,z    where the tests are laid out (default 0,0; `random` for vanilla's random spot), so a
+	//                            failure reruns in the same chunks. See GameTestServerMixin.
+	// The results also go to build/test-results/gameTest/TEST-gametest.xml (JUnit XML).
+	runs.matching { it.name == "gameTest" }.configureEach {
+		providers.gradleProperty("gametest").orNull?.let { filter ->
+			val wildcarded = if (filter.any { it in "*?" }) filter else "*$filter*"
+			val pattern = if (":" in wildcarded) wildcarded else "principia-test:$wildcarded"
+			systemProperties.put("fabric-api.gametest.filter", pattern)
+		}
+		if (providers.gradleProperty("gametest_verify").isPresent) {
+			systemProperties.put("fabric-api.gametest.verify", "true")
+		}
+		providers.gradleProperty("gametest_repeat").orNull?.let { systemProperties.put("principia.gametest.repeat", it) }
+		systemProperties.put("principia.gametest.origin", providers.gradleProperty("gametest_origin").getOrElse("0,0"))
+		systemProperties.put("fabric-api.gametest.report-file", gameTestReport.get().asFile.absolutePath)
 	}
 
 	// runClient also loads the principia-test mod (src/gametest), for its playtest scenes: `/playtest <scene>` in
@@ -232,12 +259,22 @@ tasks.check {
 	dependsOn(fuzzTest)
 }
 
+// The inner loop, in a few seconds: formats the sources, compiles every source set (main, client, test, game tests)
+// with Error Prone and NullAway, and runs the JUnit tests. No game starts. scripts/stop-check.sh runs it when an agent
+// finishes a turn that changed code; `build` is still the check before a change is done.
+tasks.register("quickCheck") {
+	description = "Formats the sources, compiles every source set and runs the JUnit tests."
+	group = "verification"
+	dependsOn("spotlessApply", sourceSets.map { it.classesTaskName }, tasks.test)
+}
+// spotlessApply rewrites sources, so it goes before anything that reads them.
+tasks.withType<JavaCompile>().configureEach { mustRunAfter("spotlessApply") }
+
 // Runs the client game tests against the built jar in a production-like environment.
 // Needs a display: use scripts/client-gametest.sh --production, which provides a 24-bit Xvfb display when available.
 // (Loom's own useXVFB wraps the game in plain `xvfb-run`, whose 8-bit default display breaks OpenGL on Debian/Ubuntu.)
 tasks.register<net.fabricmc.loom.task.prod.ClientProductionRunTask>("runProductionClientGameTest") {
 	jvmArgs.add("-Dfabric.client.gametest")
-	jvmArgs.add("-Dfabric.client.gametest.disableNetworkSynchronizer=true")
 	jvmArgs.addAll(gameTestArgs)
 	useXVFB = false
 	runDir = layout.buildDirectory.dir("run/clientGameTestProduction")
@@ -287,7 +324,25 @@ listOf("gameTest", "clientGameTest", "clientGameTestProduction").forEach { run -
 		allowlist = gameLogAllowlist
 	}
 	val runTask = if (run == "clientGameTestProduction") "runProductionClientGameTest" else "run${run.replaceFirstChar(Char::uppercase)}"
-	tasks.named(runTask) { finalizedBy(check) }
+	val log = layout.buildDirectory.file("run/$run/logs/latest.log")
+	tasks.named(runTask) {
+		finalizedBy(check)
+		// Loom clears only clientGameTest's run directory: without this, a run that dies before logging anything
+		// would be checked against the previous run's log.
+		doFirst { log.get().asFile.delete() }
+	}
+}
+
+tasks.named("runGameTest") {
+	val report = gameTestReport
+	// Each run starts from a new world: chunks that unload during a run are saved, and the next run, laid out at the
+	// same origin, would otherwise find that run's blocks where it builds.
+	val world = layout.buildDirectory.dir("run/gameTest/world")
+	outputs.file(report) // so Gradle doesn't treat the file as stale output of another task
+	doFirst {
+		world.get().asFile.deleteRecursively()
+		report.get().asFile.apply { delete(); parentFile.mkdirs() }
+	}
 }
 
 tasks.processResources {
@@ -295,6 +350,8 @@ tasks.processResources {
 		"version" to version,
 		"minecraft_version" to minecraftVersion,
 		"loader_version" to libs.versions.fabric.loader.get(),
+		// The Fabric API the mod is built against, without its "+<minecraft version>": an older one lacks APIs it calls.
+		"fabric_api_version" to libs.versions.fabric.api.get().substringBefore("+"),
 	)
 	inputs.properties(properties)
 
@@ -354,6 +411,10 @@ tasks.jar {
 	}
 }
 
+val releaseRun = providers.environmentVariable("GITHUB_ACTIONS").map { it == "true" }.orElse(false)
+	.zip(providers.environmentVariable("GITHUB_REF_TYPE").map { it == "tag" }.orElse(false)) { ci, tag -> ci && tag }
+val publishLive = providers.gradleProperty("publish_live").map { it.toBoolean() }.orElse(false)
+
 // Publishes to every platform whose project ID is set in gradle.properties.
 // Tokens come from the MODRINTH_TOKEN / CURSEFORGE_TOKEN / GITHUB_TOKEN environment variables.
 publishMods {
@@ -375,8 +436,10 @@ publishMods {
 		else -> STABLE
 	}
 	modLoaders.add("fabric")
-	// Always a dry run unless -Ppublish_live=true is passed (the release workflow does this).
-	dryRun = providers.gradleProperty("publish_live").map { !it.toBoolean() }.orElse(true)
+	// Always a dry run, unless -Ppublish_live=true is passed *and* the build runs in GitHub Actions for a pushed tag:
+	// the release workflow is the only place a live publish can happen, whatever a local command line or
+	// gradle.properties says.
+	dryRun = publishLive.zip(releaseRun) { wanted, release -> !(wanted && release) }
 
 	providers.gradleProperty("modrinth_project_id").orNull?.takeIf(String::isNotBlank)?.let { id ->
 		modrinth {
@@ -433,4 +496,14 @@ tasks.register<Sync>("exportLibrarySources") {
 	}
 	from(sourcesJars)
 	into(layout.buildDirectory.dir("agent-sources"))
+}
+
+tasks.named("publishMods") {
+	val wanted = publishLive
+	val release = releaseRun
+	doFirst {
+		if (wanted.get() && !release.get()) {
+			logger.warn("publish_live is set, but this isn't the tag-triggered release workflow: this is a dry run.")
+		}
+	}
 }

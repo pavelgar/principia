@@ -13,9 +13,17 @@ on:
 permissions:
   contents: write
 
+# One release at a time; a second tag waits instead of racing the first to the platforms.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
+    # Only the repository owner's tag pushes publish: a token or agent with push access can't release on its own.
+    if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,6 +56,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb mesa-vulkan-drivers
       - run: scripts/client-gametest.sh --production
         timeout-minutes: 10 # a client that can't open a window hangs instead of exiting
+      # A dry run first, so a changelog or configuration error fails before any platform gets an upload.
+      - run: ./gradlew publishMods
       - run: ./gradlew publishMods -Ppublish_live=true
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}

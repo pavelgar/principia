@@ -6,11 +6,13 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.mojang.authlib.GameProfile;
+import io.github.pavelgar.principia.test.mixin.ServerGamePacketListenerImplAccessor;
 import io.netty.channel.embedded.EmbeddedChannel;
 
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.network.protocol.game.ServerboundAcceptTeleportationPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerLoadedPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ClientInformation;
@@ -49,6 +51,14 @@ final class TestPlayer extends ServerPlayer {
 		server.getPlayerList().placeNewPlayer(connection, player, cookie);
 		// As its client does once it has loaded the world: until then the player can't be hurt.
 		player.connection.handleAcceptPlayerLoad(new ServerboundPlayerLoadedPacket());
+		// As its client does on joining: confirms the teleport the server sent it there, which the server waits for
+		// before it acts on the client's moves and, as for vanilla's block use, on its requests (ClientActions).
+		Vec3 sent = player.connection.awaitingPositionFromClient;
+		if (sent != null) {
+			int id = ((ServerGamePacketListenerImplAccessor) player.connection).principia$awaitingTeleport();
+			player.connection.handleAcceptTeleportPacket(new ServerboundAcceptTeleportationPacket(id, sent.x, sent.y,
+					sent.z, player.getYRot(), player.getXRot()));
+		}
 		player.setGameMode(gameType);
 		Vec3 at = helper.absoluteVec(feet);
 		player.snapTo(at.x, at.y, at.z, yaw, pitch);

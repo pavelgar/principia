@@ -22,3 +22,22 @@ prefix_rule(
     decision = "allow",
     justification = "Read-only git commands.",
 )
+
+# Defence in depth for scripts/agent-guard.sh, in case the hook isn't active.
+prefix_rule(
+    pattern = [["scripts/play.sh", "xvfb-run"]],
+    decision = "forbidden",
+    justification = "play.sh never exits; xvfb-run's default display breaks OpenGL. Use scripts/client-gametest.sh.",
+)
+
+prefix_rule(
+    pattern = ["./gradlew", ["--stop", "runClient", "runServer"]],
+    decision = "forbidden",
+    justification = "--stop kills other worktrees' builds; runClient/runServer never exit. Use runGameTest or scripts/client-gametest.sh.",
+)
+
+prefix_rule(
+    pattern = [["git", "gh"], ["push", "release"]],
+    decision = "prompt",
+    justification = "A pushed v* tag publishes a release; the human approves pushes.",
+)

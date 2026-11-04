@@ -18,12 +18,14 @@ import io.github.pavelgar.principia.skyline.SkyHook;
 import io.github.pavelgar.principia.skyline.SkyHookEntity;
 import io.github.pavelgar.principia.skyline.SkyLine;
 import io.github.pavelgar.principia.skyline.TrackStart;
+import io.github.pavelgar.principia.skyline.UseOnRailPayload;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.stats.Stats;
 import net.minecraft.util.ProblemReporter;
@@ -159,6 +161,61 @@ public class SkyHookGameTest {
 		helper.assertFalse(player.isPassenger(), "the player attached at NaN along the rail");
 		done(helper, player);
 		helper.succeed();
+	}
+
+	/**
+	 * The server checks that no block is between the eyes and the rail point, as the client does before it sends one:
+	 * a player 4 south of the right rail with a wall of stone between, at z = 7, doesn't attach, so a modified client
+	 * can't hang from a rail behind a wall and let go on its far side. One past the wall's east end, as far from the
+	 * rail, does.
+	 */
+	@GameTest(structure = AREA)
+	public void theServerRefusesARailBehindABlock(GameTestHelper helper) {
+		floor(helper);
+		lay(helper, WEST, straight(12));
+		for (int x = 3; x <= 7; x++) {
+			for (int y = 1; y <= 5; y++) {
+				helper.setBlock(x, y, 7, Blocks.STONE);
+			}
+		}
+
+		TestPlayer walled = rider(helper, GameType.SURVIVAL, new Vec3(5.5, 1, 9.5), 180, -15);
+		attach(helper, walled, RailSide.RIGHT, 4);
+		TestPlayer inSight = rider(helper, GameType.SURVIVAL, new Vec3(10.5, 1, 9.5), 180, -15);
+		attach(helper, inSight, RailSide.RIGHT, 9);
+
+		helper.assertFalse(walled.isPassenger(), "the player behind the wall attached");
+		helper.assertTrue(inSight.isPassenger(), "the player in sight of the rail didn't attach");
+		done(helper, walled, inSight);
+		helper.succeed();
+	}
+
+	/**
+	 * Every payload a client sends goes through {@code ClientActions} first, as vanilla's block use does: sent through
+	 * the player's connection, a dead player's use of the hook on the rail does nothing, and a living player's, the
+	 * same tick and as near, attaches them.
+	 */
+	@GameTest(structure = AREA, maxTicks = 20)
+	public void aDeadPlayersRequestIsIgnored(GameTestHelper helper) {
+		floor(helper);
+		lay(helper, WEST, straight(12));
+		TestPlayer dead = rider(helper, GameType.SURVIVAL, new Vec3(3.5, 1, RIGHT_Z), EAST, 0);
+		dead.setHealth(0);
+		TestPlayer living = rider(helper, GameType.SURVIVAL, new Vec3(5.5, 1, RIGHT_Z), EAST, 0);
+		RailPoint target = new RailPoint(helper.absolutePos(WEST), AnchorSide.FRONT, RailSide.RIGHT, 4);
+		for (TestPlayer player : List.of(dead, living)) {
+			player.connection.handleCustomPayload(
+					new ServerboundCustomPayloadPacket(new UseOnRailPayload(InteractionHand.MAIN_HAND, target)));
+		}
+
+		helper.startSequence()
+				.thenIdle(1)
+				.thenExecute(() -> {
+					helper.assertFalse(dead.isPassenger(), "the dead player attached");
+					helper.assertTrue(living.isPassenger(), "the living player didn't attach");
+					done(helper, dead, living);
+				})
+				.thenSucceed();
 	}
 
 	/**
@@ -819,7 +876,10 @@ public class SkyHookGameTest {
 							"the hook moved before the track loaded, to " + loaded[0].position());
 					SkyLineSegmentGameTest.setForced(level, west, true);
 				})
-				.thenWaitUntil(() -> helper.assertFalse(loaded[0].position().equals(hanging), "not resumed yet"))
+				// Not equals(): resuming snaps the hook to its rail point, which can differ from the saved position in
+				// the last bits, a tick before it rides on.
+				.thenWaitUntil(() -> helper.assertTrue(loaded[0].position().distanceTo(hanging) >= EXACT,
+						"not resumed yet"))
 				.thenExecute(() -> {
 					helper.assertTrue(loaded[0].hasPassenger(rider), "the rider let go once the track loaded");
 					helper.assertTrue(loaded[0].position().distanceTo(hanging.add(0.05, 0, 0)) < EXACT,

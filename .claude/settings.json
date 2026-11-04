@@ -47,6 +47,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/stop-check.sh",
+            "timeout": 300
+          }
+        ]
+      }
     ]
   }
 }

@@ -14,6 +14,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.fabricmc.fabric.api.event.client.player.ClientHotbarScrollEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPreAttackCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
@@ -21,7 +22,7 @@ import net.fabricmc.fabric.api.event.player.UseItemCallback;
 /**
  * The client's side of {@code SkyLineHooks}: tells anchors they loaded or unloaded in the client's level, draws their
  * rails, sends the rail a Sky-Hook is used on or a player mines and the block a Sky-Line lays track to, shows what
- * laying track would do, draws the outlines of the rail and of the anchor's beam aimed at, plays the riding sound, and
+ * laying track would do and turns a new anchor with the mouse wheel, draws the outlines of the rail and of the anchor's beam aimed at, plays the riding sound, and
  * draws nothing for the hook a rider hangs from: what shows is the rider's raised arm and the Sky-Hook in it. {@link
  * BlockEntityRenderers#register} is vanilla's, opened by Fabric API's transitive access wideners.
  */
@@ -59,5 +60,9 @@ public final class SkyLineClientHooks {
 		ClientTickEvents.END_CLIENT_TICK.register(RailMining::tickEnded);
 		ClientTickEvents.END_CLIENT_TICK.register(RidingSound::tick);
 		EntityRenderers.register(SkyLine.HOOK_ENTITY, NoopRenderer::new);
+		// Sneaking while aiming at a new anchor's spot, the wheel steps the anchor's heading instead of the hotbar's
+		// slot. Fabric passes the scaled offsets; vanilla turns a sideways scroll the other way.
+		ClientHotbarScrollEvents.ALLOW.register((inventory, currentSlot, newSlot, xOffset,
+				yOffset) -> !TrackLaying.scroll(yOffset != 0 ? yOffset : -xOffset));
 	}
 }

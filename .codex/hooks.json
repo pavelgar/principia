@@ -22,6 +22,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/scripts/stop-check.sh\"",
+            "timeout": 300
+          }
+        ]
+      }
     ]
   }
 }

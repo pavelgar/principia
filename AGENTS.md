@@ -16,7 +16,7 @@ Traps, each with its current form:
 - Rendering goes through the GPU API in `com.mojang.renderpearl` (OpenGL and Vulkan backends; `RenderSystem` and vertex formats stay in `com.mojang.blaze3d`), never raw GL calls.
 - Recipes aren't sent to clients (since 1.21.2), so recipe viewers see a custom recipe type only when its `RecipeSerializer` is passed to `RecipeSynchronization.synchronizeRecipeSerializer` in common init.
 - The local Fabric docs (`.references/fabric-docs`) can trail the Minecraft version: check the version their `reference/latest/build.gradle` pins. Fabric's release post for our version (for 26.3, `https://fabricmc.net/2026/09/15/263.html`) lists what changed since, e.g. 26.3 removed `Block.codec()`, which the 26.2 docs' block entity examples still override.
-- Even the Fabric docs lag: `develop/automatic-testing.md` calls `singleplayer.getClientLevel().waitForChunksRender()`, which in 0.161 is `singleplayer.getConnection().waitForChunksRender()` (`getConnection().getClientLevel()` is the plain `ClientLevel`, without it). **The sources are the ground truth; the docs explain intent.**
+- Even the Fabric docs lag: `develop/automatic-testing.md` calls `singleplayer.getClientLevel().waitForChunksRender()`, which since 0.161 is `singleplayer.getConnection().waitForChunksRender()` (`getConnection().getClientLevel()` is the plain `ClientLevel`, without it), and still sets `-Dfabric.client.gametest.disableNetworkSynchronizer`, which 0.161 removed with the synchronizer: wait with `getConnection().waitForClientboundPackets()` and its siblings. **The sources are the ground truth; the docs explain intent.**
 
 ## Local references (gitignored)
 
@@ -28,9 +28,10 @@ Grep it instead of guessing. Vanilla usually already does what you need: find th
 
 Gradle tasks in one checkout run one at a time; different worktrees may build in parallel. The first build after a version change takes several minutes, and the first `runDatagen` or client game test downloads about 490 MB of game assets into `~/.gradle`.
 
+- `./gradlew quickCheck` is the inner loop, in seconds: formats, compiles every source set, runs the JUnit tests. No game starts.
 - `./gradlew build`: compile, JUnit tests, server game tests, formatting, jar.
 - `./gradlew spotlessApply` formats the Java sources; `build` fails on violations.
-- `./gradlew runGameTest` runs the server game tests alone.
+- `./gradlew runGameTest` runs the server game tests alone, in a fresh world at a fixed origin, so a failure reruns as it failed. `-Pgametest=<part of the id>` runs some, `-Pgametest_repeat=100` hunts flakiness, `-Pgametest_origin=random` lays them out as vanilla does; the comment on these in `build.gradle.kts` has the details. Results also land in `build/test-results/gameTest/TEST-gametest.xml`.
 - `scripts/client-gametest.sh` (`--only=<Class>` for one test class) runs the client game tests (headless when `xvfb-run` is installed, in a window otherwise) and copies the screenshots and the log to the `build/evidence/...` folder it prints. It is not part of `build`.
 - `scripts/play.sh [scene]` starts the game straight into this checkout's playtest world and builds the scene beside the player. It never exits, so the guard blocks it for agents; `PlaytestClientGameTest` builds and screenshots every scene.
 - `./gradlew pitest -Ppit_target=<package>.<Class>*` mutates those classes, runs their package's JUnit tests against each mutant, and lists the mutants no test noticed, each with what it changed, in `build/reports/pitest/mutations.xml`. Tests that need Fabric Loader fail under it. It is not part of `build`.
@@ -52,7 +53,7 @@ When something else fails, look at Gradle's output and `build/reports/`, the gam
 
 - This file is the only instruction file. Claude Code reads `AGENTS.md` natively, and a `CLAUDE.md` or `CLAUDE.local.md` would stop that.
 - Each skill in `.agents/skills/` (Codex) has a symlink in `.claude/skills/` (Claude Code); `scripts/check-skills.sh` checks it in CI.
-- `scripts/agent-guard.sh` blocks commands that hang or reach other worktrees, and live publishing; `scripts/test-agent-guard.sh` tests it. Command permissions live in `.claude/settings.json` and `.codex/rules/principia.rules`.
+- `scripts/agent-guard.sh` blocks commands that hang or reach other worktrees, live publishing, and pushing tags or making releases (the human releases); `scripts/test-agent-guard.sh` tests it. Command permissions live in `.claude/settings.json` and `.codex/rules/principia.rules`.
 - When the jdtls plugin (Java language server) is on, hover on a Minecraft or Fabric call gives its exact signature, and go-to-definition works within `src/`. It can't open library classes, so read those in `.references/sources/`.
 
 ## Conventions
@@ -60,6 +61,8 @@ When something else fails, look at Gradle's output and `build/reports/`, the gam
 - `src/main/generated` is datagen output: to change it, change the provider and rerun `runDatagen`.
 - English text is declared in Java next to what it names: a block's or item's name is an argument of its `Content` registration, other text an `English.add` constant. `en_us.json` is generated from it; other languages are hand-written files in `src/main/resources`.
 - JUnit tests call `SharedConstants.tryDetectVersion(); Bootstrap.bootStrap();` before touching registries, and need nothing that runs a game or opens a window.
+- A failing test is evidence: fix the code, or report the test as wrong. A test, saved fuzz input or screenshot template changes only with the behaviour it pins, and the PR says so.
+- Every serverbound payload handler starts with `ClientActions.accept(player)` (alive, loaded, no pending teleport), then the feature's own checks: reach, line of sight, protection.
 - How to write and run a client game test: `.agents/skills/mc-api-lookup/client-gametests.md`.
 
 Rules the existing code can't show, because they are about code not yet written:
