@@ -1,0 +1,21 @@
+name: pr-title
+# A squash merge makes the PR title the commit subject on */dev, so the title must be a Conventional Commit
+# (AGENTS.md, Commits). The */dev ruleset requires this check on a PR's latest commit, so it runs on every push too.
+# pull_request rather than the action's suggested pull_request_target: it never runs with write access for a fork's PR.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  title:
+    # An edit to the description alone leaves the title as it was checked.
+    if: github.event.action != 'edited' || github.event.changes.title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6 # default types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

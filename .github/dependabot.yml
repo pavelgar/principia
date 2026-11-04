@@ -6,6 +6,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    commit-message: # a Conventional Commit: "ci(deps): bump ..."
+      prefix: ci
+      include: scope
     groups:
       actions:
         patterns: ["*"]

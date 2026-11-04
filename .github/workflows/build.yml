@@ -1,12 +1,12 @@
 name: build
-# Private repo on the free tier: CI minutes are limited, so doc-only changes and squash merges (already tested in
-# their PR) don't run. Run it by hand from the Actions tab (workflow_dispatch) when you want a check anyway.
+# Every PR runs it, because the */dev ruleset requires it before a merge: a check skipped by a path filter would leave
+# the PR waiting forever. Pushes skip doc-only changes and squash merges (already tested in their PR). Run it by hand
+# from the Actions tab (workflow_dispatch) when you want a check anyway.
 on:
   push:
     branches: ['*/dev'] # one base branch per Minecraft version, e.g. 26.3/dev
-    paths: &code ['**', '!**.md', '!docs/**', '.agents/**'] # skills are checked by check-skills.sh
+    paths: ['**', '!**.md', '!docs/**', '.agents/**'] # skills are checked by check-skills.sh
   pull_request:
-    paths: *code
   workflow_dispatch:
     inputs:
       cache-only:
