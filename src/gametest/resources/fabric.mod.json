@@ -1,0 +1,40 @@
+{
+	"schemaVersion": 1,
+	"id": "principia-test",
+	"version": "1.0.0",
+	"name": "Principia Tests",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"io.github.pavelgar.principia.test.Playtest"
+		],
+		"client": [
+			"io.github.pavelgar.principia.test.PlaytestClient"
+		],
+		"fabric-gametest": [
+			"io.github.pavelgar.principia.test.RegistrationGameTest",
+			"io.github.pavelgar.principia.test.SkyLineAnchorGameTest",
+			"io.github.pavelgar.principia.test.SkyLineSegmentGameTest",
+			"io.github.pavelgar.principia.test.SkyLineItemGameTest",
+			"io.github.pavelgar.principia.test.SkyLineBreakingGameTest",
+			"io.github.pavelgar.principia.test.SkyHookGameTest"
+		],
+		"fabric-client-gametest": [
+			"io.github.pavelgar.principia.test.PrincipiaClientGameTest",
+			"io.github.pavelgar.principia.test.DedicatedServerClientGameTest",
+			"io.github.pavelgar.principia.test.SkyLineClientGameTest",
+			"io.github.pavelgar.principia.test.SkyHookClientGameTest",
+			"io.github.pavelgar.principia.test.SkyHookJumpClientGameTest",
+			"io.github.pavelgar.principia.test.SkyLineItemClientGameTest",
+			"io.github.pavelgar.principia.test.SkyLineLayingClientGameTest",
+			"io.github.pavelgar.principia.test.SkyHookDedicatedServerClientGameTest",
+			"io.github.pavelgar.principia.test.PlaytestClientGameTest"
+		]
+	},
+	"mixins": [
+		"principia-test.mixins.json"
+	],
+	"depends": {
+		"principia": "*"
+	}
+}

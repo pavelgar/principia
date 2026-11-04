@@ -1,0 +1,32 @@
+{
+  "variants": {
+    "heading=east": {
+      "model": "principia:block/sky_line_anchor",
+      "y": 90
+    },
+    "heading=north": {
+      "model": "principia:block/sky_line_anchor"
+    },
+    "heading=north_east": {
+      "model": "principia:block/sky_line_anchor_diagonal",
+      "y": 90
+    },
+    "heading=north_west": {
+      "model": "principia:block/sky_line_anchor_diagonal"
+    },
+    "heading=south": {
+      "model": "principia:block/sky_line_anchor"
+    },
+    "heading=south_east": {
+      "model": "principia:block/sky_line_anchor_diagonal"
+    },
+    "heading=south_west": {
+      "model": "principia:block/sky_line_anchor_diagonal",
+      "y": 90
+    },
+    "heading=west": {
+      "model": "principia:block/sky_line_anchor",
+      "y": 90
+    }
+  }
+}

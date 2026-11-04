@@ -1,0 +1,4 @@
+# Codex metadata: only run this skill when explicitly invoked ($release), never implicitly.
+# (Claude Code's equivalent is `disable-model-invocation: true` in SKILL.md.)
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,16 @@
+{
+  "block.principia.sky_line_anchor": "Sky-Line Anchor",
+  "block.principia.sky_line_beam_end": "Sky-Line Anchor",
+  "entity.principia.sky_hook": "Sky-Hook",
+  "item.principia.sky_hook": "Sky-Hook",
+  "item.principia.sky_line": "Sky-Line",
+  "item.principia.sky_line.may_not_build": "You may not build here",
+  "item.principia.sky_line.no_free_side": "This anchor has no free side",
+  "item.principia.sky_line.no_room": "No room here",
+  "item.principia.sky_line.too_few_rails": "Not enough Sky-Lines",
+  "item.principia.sky_line.too_long": "Too long: at most %s blocks",
+  "item.principia.sky_line.too_steep": "Too steep: at most %s°",
+  "item.principia.sky_line.turn_too_sharp": "Turn too sharp",
+  "itemGroup.principia": "Principia",
+  "stat.principia.sky_line_one_cm": "Distance by Sky-Line"
+}

@@ -1,0 +1,42 @@
+{
+	"schemaVersion": 1,
+	"id": "principia",
+	"version": "${version}",
+	"name": "Principia",
+	"description": "A Minecraft mod for Fabric.",
+	"authors": [
+		"pavelgar"
+	],
+	"contact": {
+		"sources": "https://github.com/pavelgar/principia",
+		"issues": "https://github.com/pavelgar/principia/issues"
+	},
+	"license": "LicenseRef-Principia-1.0",
+	"icon": "assets/principia/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"io.github.pavelgar.principia.Principia"
+		],
+		"client": [
+			"io.github.pavelgar.principia.client.PrincipiaClient"
+		],
+		"fabric-datagen": [
+			"io.github.pavelgar.principia.client.PrincipiaDataGenerator"
+		]
+	},
+	"accessWidener": "principia.classtweaker",
+	"mixins": [
+		"principia.mixins.json",
+		{
+			"config": "principia.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=${loader_version}",
+		"minecraft": "~${minecraft_version}",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

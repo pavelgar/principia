@@ -1,0 +1,24 @@
+# Codex command rules for Principia (the equivalent of the permissions in .claude/settings.json).
+# Syntax: https://learn.chatgpt.com/docs/agent-configuration/rules. The strictest matching rule wins.
+# Note: "allow" runs the command outside Codex's sandbox (Gradle needs network access and ~/.gradle).
+# Rules can't match flags in the middle of a command or tell reads from writes; scripts/agent-guard.sh
+# (PreToolUse hook) covers those cases.
+
+prefix_rule(
+    pattern = ["./gradlew"],
+    decision = "allow",
+    justification = "Gradle builds and game tests need network access and ~/.gradle.",
+    match = [["./gradlew", "build"], ["./gradlew", "runGameTest"]],
+)
+
+prefix_rule(
+    pattern = [["scripts/setup.sh", "scripts/client-gametest.sh"]],
+    decision = "allow",
+    justification = "Project setup and headless client game tests.",
+)
+
+prefix_rule(
+    pattern = ["git", ["status", "diff", "log", "show"]],
+    decision = "allow",
+    justification = "Read-only git commands.",
+)

@@ -1,0 +1,75 @@
+Principia License 1.0
+
+Copyright (c) 2026 pavelgar. All rights reserved.
+
+This license applies to Principia (the "Mod"): its source code, compiled files, textures, models, sounds,
+data files, documentation and all other material in this repository or in any distributed copy of the Mod,
+in original or modified form. You may use the Mod only as described below. Any right not expressly granted
+here is reserved by the copyright holder. Each release of the Mod is governed by the version of this
+license shipped with that release.
+
+
+1. PERMITTED USES
+
+   You may, free of charge:
+
+   a) Play: download, install and use the Mod for any personal purpose, including on single-player worlds,
+      and modify it for your own private use.
+
+   b) Servers: run the Mod, original or modified by you, on any Minecraft server, public or private,
+      including servers that earn money, provided you do not distribute a modified Mod.
+
+   c) Modpacks: include the unmodified Mod in any modpack, including commercial ones, provided you credit
+      Principia and link to its official download page (for example on Modrinth).
+
+   d) Media: make and publish videos, streams, screenshots, reviews and other content showing the Mod.
+
+   e) Learning and compatibility: read the source code to learn from it, and create separate projects
+      that interact with the Mod (for example compatibility add-ons), provided they don't copy the Mod's
+      code or assets.
+
+
+2. PROHIBITED USES
+
+   Unless the copyright holder has given you written permission, you may not:
+
+   a) Re-upload, republish or redistribute the Mod on its own, whether original or modified.
+
+   b) Distribute modified versions of the Mod, including inside modpacks.
+
+   c) Copy any part of the Mod's code or assets into another project.
+
+   d) Use any part of the Mod, in any form and however you obtained it, for artificial intelligence or
+      machine learning. This includes:
+        - using it to train, fine-tune, evaluate or benchmark any machine-learning model, including
+          large language models, code models and image, audio or other generative models;
+        - including it in any dataset, corpus, index or embedding store built for such models or for
+          systems that retrieve content for them.
+      This applies to everyone, including individuals, companies and other organisations, and it applies
+      whether or not the resulting model or system stores or reproduces any part of the Mod.
+
+
+3. TEXT AND DATA MINING RESERVATION
+
+   The copyright holder expressly reserves all rights to text and data mining of the Mod, including under
+   Article 4(3) of Directive (EU) 2019/790 and equivalent provisions in other jurisdictions. This
+   reservation also applies to automated analysis carried out for the uses listed in section 2(d).
+
+
+4. OTHER TERMS
+
+   a) Written permission: any term of this license can be waived for you individually, but only with the
+      copyright holder's written permission.
+
+   b) Contributions: by submitting a contribution (for example a pull request), you agree that it may be
+      included in the Mod and distributed under this license or any later license chosen by the copyright
+      holder.
+
+   c) No warranty: THE MOD IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+      BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+      NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+      LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE MOD OR ITS USE.
+
+   d) Minecraft: this license does not grant any rights to Minecraft or other works by Mojang Studios or
+      Microsoft. Principia is not an official Minecraft product and is not approved by or associated with
+      Mojang or Microsoft.

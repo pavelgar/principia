@@ -1,0 +1,21 @@
+{
+	"required": true,
+	"package": "io.github.pavelgar.principia.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"AbstractClientPlayerMixin",
+		"ArmPoseMixin",
+		"AvatarRendererMixin",
+		"FirstPersonHandsAndItemsRendererMixin",
+		"HumanoidMobRendererMixin",
+		"HumanoidModelMixin",
+		"MinecraftMixin",
+		"MouseHandlerMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

@@ -1,0 +1,25 @@
+name: cache-refresh
+# Starts build.yml's cache-refresh job after a push that changes what the caches hold. A push run isn't told which
+# files changed, so only a workflow-level paths filter can tell, and build.yml's must stay broad.
+on:
+  push:
+    branches: ['*/dev']
+    paths:
+      - 'gradle/**'
+      - 'gradlew*'
+      - 'gradle.properties'
+      - '*.gradle.kts'
+      - '.github/workflows/build.yml'
+
+permissions:
+  actions: write # a workflow_dispatch from GITHUB_TOKEN does start a run, unlike its other events
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run build.yml --ref "$GITHUB_REF_NAME" -f cache-only=true

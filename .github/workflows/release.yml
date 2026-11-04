@@ -1,0 +1,55 @@
+# Publishes a release when a tag like v0.1.0+26.3 (v<mod_version>+<minecraft version>) is pushed.
+# Tags carry the Minecraft version because each <mc_version>/dev branch releases separately.
+# The tag must match gradle.properties / libs.versions.toml, its commit must be on the <mc_version>/dev branch, and
+# CHANGELOG.md must have a "## [0.1.0]" section, and the build and the client game tests must pass, before anything
+# is published.
+# Required repository secrets (only for platforms configured in gradle.properties):
+#   MODRINTH_TOKEN, CURSEFORGE_TOKEN. GITHUB_TOKEN is provided automatically.
+name: release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the branch check below needs <mc_version>/dev's history
+      - name: Check the tag matches mod_version and is on the base branch
+        run: |
+          mod=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
+          mc=$(sed -n 's/^minecraft *= *"\(.*\)"/\1/p' gradle/libs.versions.toml)
+          expected="v$mod+$mc"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the build version ($expected)"
+            exit 1
+          fi
+          # HEAD is the tagged commit. An older commit of the branch can still be released.
+          if ! git merge-base --is-ancestor HEAD "origin/$mc/dev"; then
+            echo "::error::Tag $GITHUB_REF_NAME is not on the $mc/dev branch; tag the merge commit there (README, Releasing)"
+            exit 1
+          fi
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+      - run: ./gradlew build
+      # The same client game tests build.yml runs against the built jar, which a squash-merged commit may never have had
+      # (build.yml skips those pushes). No apt cache: releases are rare. Keep the packages in step with build.yml.
+      - name: Install the client tests' apt packages
+        run: sudo apt-get update && sudo apt-get install -y xvfb mesa-vulkan-drivers
+      - run: scripts/client-gametest.sh --production
+        timeout-minutes: 10 # a client that can't open a window hangs instead of exiting
+      - run: ./gradlew publishMods -Ppublish_live=true
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,184 @@
+name: build
+# Private repo on the free tier: CI minutes are limited, so doc-only changes and squash merges (already tested in
+# their PR) don't run. Run it by hand from the Actions tab (workflow_dispatch) when you want a check anyway.
+on:
+  push:
+    branches: ['*/dev'] # one base branch per Minecraft version, e.g. 26.3/dev
+    paths: &code ['**', '!**.md', '!docs/**', '.agents/**'] # skills are checked by check-skills.sh
+  pull_request:
+    paths: *code
+  workflow_dispatch:
+    inputs:
+      cache-only:
+        description: Only refresh the caches (cache-refresh.yml sets this)
+        type: boolean
+        default: false
+  # GitHub evicts a cache entry that goes unused for 7 days, so cache-refresh rewrites them twice a week.
+  schedule:
+    - cron: '17 4 * * 1,4'
+
+concurrency:
+  # Per event, so a squash merge's push run (which runs nothing) can't cancel a refresh on the same branch.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # What the client game tests need from apt. Part of the apt cache's key, so changing it fetches them afresh.
+  APT_PACKAGES: xvfb mesa-vulkan-drivers
+
+jobs:
+  # Compiles, runs unit tests and server game tests, and builds the jar. Then, when the change reaches something they
+  # exercise, boots a real client headlessly against that jar and runs the client game tests. They are steps of this
+  # job, not a job of their own, because a second job would repeat about a minute of JDK, Gradle and compile set-up
+  # and be billed rounded up to a whole minute on its own.
+  build:
+    # A squash merge is committed by GitHub with "(#<pr>)" in its subject.
+    if: >-
+      github.event_name != 'schedule' && !inputs.cache-only && (
+        github.event_name != 'push'
+        || github.event.head_commit.committer.email != 'noreply@github.com'
+        || !contains(github.event.head_commit.message, '(#'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the client-test decision diffs against the base
+      - name: Decide whether the client game tests run
+        id: client
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        # A PR's HEAD is GitHub's merge into the base's tip (HEAD^1), so that diff is what the PR brings. A push is
+        # diffed against the commit before it; a new branch or a force push leaves nothing to diff, so the tests run.
+        run: |
+          case "$EVENT" in
+            pull_request) base=HEAD^1 ;;
+            push) base=$BEFORE ;;
+            *) base= ;;
+          esac
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            run=true
+          elif git diff --name-only "$base" HEAD | grep -qE \
+            '^(src/|gradle/|build\.gradle\.kts$|settings\.gradle\.kts$|gradle\.properties$|gradlew(\.bat)?$|scripts/client-gametest\.sh$|\.github/workflows/build\.yml$)'; then
+            run=true
+          else
+            run=false
+          fi
+          echo "Client game tests run: $run"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - name: Check scripts and skills
+        run: |
+          scripts/check-skills.sh
+          scripts/test-agent-guard.sh
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - uses: gradle/actions/setup-gradle@v6 # also validates the wrapper
+        with:
+          cache-read-only: true # cache-refresh is the one writer
+      - run: ./gradlew build
+      - name: Check datagen output is up to date
+        run: |
+          ./gradlew runDatagen
+          if [ -n "$(git status --porcelain src/main/generated)" ]; then
+            git status --porcelain src/main/generated
+            echo "::error::Generated resources are stale. Run ./gradlew runDatagen and commit src/main/generated."
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: jars
+          path: build/libs/
+      # GitHub runners have no GPU and OpenGL can't get a GLX visual under Xvfb, so Minecraft
+      # falls back to Vulkan on Mesa's software rasterizer (lavapipe). Same setup as Fabric API's CI.
+      - if: steps.client.outputs.run == 'true'
+        id: apt-key
+        run: echo "key=apt-${ImageOS:?}-${ImageVersion:?}-${APT_PACKAGES// /-}" >> "$GITHUB_OUTPUT"
+      - if: steps.client.outputs.run == 'true'
+        id: apt
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/apt-debs
+          key: ${{ steps.apt-key.outputs.key }}
+      # The cached .deb files are what apt chose for this runner image, so dpkg installs them without apt-get update
+      # (12 MB of package lists) or a download (about 29 MB). A new image misses the cache until cache-refresh runs.
+      - if: steps.client.outputs.run == 'true'
+        name: Install the client tests' apt packages
+        env:
+          CACHED: ${{ steps.apt.outputs.cache-hit }}
+        run: |
+          if [ "$CACHED" = true ]; then
+            sudo dpkg -i ~/apt-debs/*.deb
+          else
+            sudo apt-get update && sudo apt-get install -y $APT_PACKAGES
+          fi
+      - if: steps.client.outputs.run == 'true'
+        run: scripts/client-gametest.sh --production
+        timeout-minutes: 10 # a client that can't open a window hangs instead of exiting
+      - if: always() && steps.client.outputs.run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-game-test-output
+          path: |
+            build/run/clientGameTestProduction/screenshots
+            build/run/clientGameTestProduction/logs
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-reports
+          path: |
+            build/reports/
+            build/test-results/
+            build/run/**/logs/
+            build/run/**/crash-reports/
+
+  # Writes the caches the build job reads. A run writes only its own branch's cache scope and a PR run reads its base
+  # branch's, but the pushes to a */dev branch are squash merges, which the build job skips. So this job refreshes
+  # them: twice a week, by hand, and when cache-refresh.yml dispatches it after a push that changes the build.
+  cache-refresh:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # setup-gradle keys the Gradle home entry on the job id and PR runs look for the build job's first, so this
+      # job saves under that id. Otherwise they would keep restoring the last entry the build job wrote.
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: false # also on a */dev branch that isn't the default: PRs into it read its scope
+      # The same Gradle work as the build job, so the saved entry holds what a PR run needs. setup-gradle removes
+      # the files this run didn't use before saving.
+      - run: ./gradlew build
+      - id: apt-key
+        run: echo "key=apt-${ImageOS:?}-${ImageVersion:?}-${APT_PACKAGES// /-}" >> "$GITHUB_OUTPUT"
+      - id: apt
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/apt-debs
+          key: ${{ steps.apt-key.outputs.key }}
+          lookup-only: true
+      - if: steps.apt.outputs.cache-hit != 'true'
+        name: Download the client tests' apt packages
+        run: |
+          sudo apt-get clean
+          sudo apt-get update
+          sudo apt-get install -y --download-only $APT_PACKAGES
+          mkdir -p ~/apt-debs
+          cp /var/cache/apt/archives/*.deb ~/apt-debs/
+          ls -l ~/apt-debs
+      - if: steps.apt.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/apt-debs
+          key: ${{ steps.apt-key.outputs.key }}

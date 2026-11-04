@@ -1,0 +1,67 @@
+# gradle
+
+.gradle/
+build/
+out/
+classes/
+
+# eclipse
+
+*.launch
+
+# idea
+
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# vscode
+
+.settings/
+.vscode/
+bin/
+.classpath
+.project
+.factorypath
+
+# macos
+
+*.DS_Store
+
+# fabric
+
+run/
+
+# java
+
+hs_err_*.log
+replay_*.log
+*.hprof
+*.jfr
+
+# fabric runtime artefacts written to the project root (datagen, loader cache)
+.fabric/
+logs/
+
+# datagen cache (outputs in src/main/generated are committed, the cache is not)
+src/main/generated/.cache/
+
+# kotlin
+.kotlin/
+
+# personal agent settings/instructions (shared ones are committed). Note: a CLAUDE.local.md stops Claude Code
+# from reading AGENTS.md, so prefer .claude/settings.local.json / AGENTS.override.md for personal tweaks.
+.claude/settings.local.json
+CLAUDE.local.md
+AGENTS.override.md
+
+# local reference tree for coding agents (scripts/setup.sh); no trailing slash so a symlink is ignored too
+/.references
+
+# Claude Code worktrees (claude --worktree, subagent isolation, background sessions)
+/.claude/worktrees/
+
+# jazzer
+
+.cifuzz-corpus/

@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Self-test for scripts/agent-guard.sh: run it after changing the guard.
+cd "$(dirname "$0")/.."
+fail=0
+check() { # check <expected exit> <command>
+	got=$(jq -n --arg c "$2" '{tool_input: {command: $c}}' | scripts/agent-guard.sh 2>/dev/null; echo $?)
+	if [ "$got" = "$1" ]; then echo "ok    exit=$got  $2"; else echo "FAIL  exit=$got (want $1)  $2"; fail=1; fi
+}
+# allowed
+check 0 "./gradlew build"
+check 0 "scripts/setup.sh"
+check 0 "echo done && ./gradlew test"
+check 0 "rg publish_live build.gradle.kts"
+check 0 "grep -n 'publish_live=true' scripts/test-agent-guard.sh"
+check 0 "echo publish_live=true >> notes.md"
+check 2 "ORG_GRADLE_PROJECT_publish_live=true ./gradlew publishMods"
+check 2 "cd x && ./gradlew publishMods -Ppublish_live=true --info"
+check 0 "python3 scripts/edit_docs.py"
+check 0 "./gradlew runClientGameTest"
+check 0 "./gradlew runProductionClientGameTest"
+check 0 "./gradlew runGameTest"
+check 0 "./gradlew runDatagen"
+check 0 "./gradlew runClientRenderDoc"
+check 0 "scripts/client-gametest.sh --production"
+check 0 "cat scripts/play.sh"
+check 0 "grep -n play.sh AGENTS.md"
+check 2 "scripts/play.sh"
+check 2 "scripts/play.sh descent"
+check 2 "cd x && ./scripts/play.sh lines"
+check 0 "grep -rn 'runClient' docs"
+check 0 "grep -rn xvfb-run scripts"
+check 0 "which xvfb-run"
+check 0 "command -v xvfb-run >/dev/null || sudo dnf install xorg-x11-server-Xvfb"
+check 0 "./gradlew genSources"
+check 0 "./gradlew --console=plain -q genSources exportLibrarySources"
+check 0 "ORG_GRADLE_PROJECT_decompiler_memory=2048 ./gradlew genSources 2>&1 | tail -n 20"
+check 0 "./gradlew genSources && ./gradlew build"
+check 0 "./gradlew build -x test --console plain"
+# blocked
+check 2 "./gradlew publishMods -Ppublish_live=true"
+check 2 "./gradlew runClient"
+check 2 "./gradlew runServer --info"
+check 2 "gradle runClient"
+check 2 "./gradlew build runClient"
+check 2 "./gradlew :runClient"
+check 2 "cd .claude/worktrees/x && ./gradlew runClient"
+check 2 "timeout 600 ./gradlew runClient"
+check 2 "./gradlew --stop"
+check 2 "./gradlew build && ./gradlew --stop"
+check 2 "./gradlew build; ./gradlew --stop"
+check 2 "xvfb-run -a ./gradlew runClientGameTest"
+check 2 "env FOO=1 xvfb-run ./gradlew runClientGameTest"
+check 2 "cd x && /usr/bin/xvfb-run ./gradlew runClientGameTest"
+check 2 "./gradlew genSources build"
+check 2 "./gradlew build genSources"
+check 2 "./gradlew --console=plain genClientOnlySources runGameTest"
+exit $fail
