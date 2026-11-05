@@ -8,6 +8,7 @@ import io.github.pavelgar.principia.skyline.BreakRailPayload;
 import io.github.pavelgar.principia.skyline.RailAim;
 import io.github.pavelgar.principia.skyline.SegmentIndex;
 import io.github.pavelgar.principia.skyline.SkyLine;
+import io.github.pavelgar.principia.skyline.StartMiningRailPayload;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.client.Minecraft;
@@ -27,7 +28,8 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 
 /**
  * Mining a rail, on the client, as Create mines its curves: holding attack on a rail mines its whole segment, at the
- * speed the anchor block mines at (a vanilla rail's), and once done the client sends the rail point for the server to
+ * speed the anchor block mines at (a vanilla rail's). The client tells the server as it starts ({@link
+ * StartMiningRailPayload}), which times it, and once done sends the rail point for the server to
  * break ({@link BreakRailPayload}). Progress holds while the player aims anywhere on the same segment, and starts over
  * on another target or once they let go. The arm swings and the rails crack as when mining a block ({@link
  * #submitCracks}); there is no sound or particles. Creative breaks at once, with vanilla's 5 ticks between breaks.
@@ -87,6 +89,10 @@ final class RailMining {
 		}
 		player.swing(InteractionHand.MAIN_HAND, held.getAttackAnimation(), false);
 		player.connection.send(ServerboundPunchPacket.INSTANCE);
+		if (progress == 0) {
+			// As vanilla's client tells the server it starts mining a block: the server times the break from here.
+			ClientPlayNetworking.send(new StartMiningRailPayload(target.railPoint()));
+		}
 		progress += player.hasInfiniteMaterials() ? 1 : anchor.getDestroyProgress(player, level, at);
 		if (progress >= 1) {
 			ClientPlayNetworking.send(new BreakRailPayload(target.railPoint()));

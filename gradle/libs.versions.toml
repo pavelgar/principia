@@ -21,6 +21,9 @@ pitest-junit5 = "1.2.3"
 # Shaded into Fabric Loader (net/fabricmc/loader/impl/lib/classtweaker); only its sources are fetched, for .references/
 classtweaker = "0.3.0"
 
+# Claim mods' shared protection API (MIT). Compiled against, called only when a claim mod has loaded it; never shipped.
+common-protection-api = "2.0.0"
+
 # Dev-only runtime mods (never shipped, never declared as dependencies)
 modmenu = "21.0.0"
 sodium = "0.9.2+mc26.3"
@@ -35,6 +38,8 @@ fabric-api = { module = "net.fabricmc.fabric-api:fabric-api", version.ref = "fab
 
 errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone" }
 nullaway = { module = "com.uber.nullaway:nullaway", version.ref = "nullaway" }
+
+common-protection-api = { module = "eu.pb4:common-protection-api", version.ref = "common-protection-api" }
 
 modmenu = { module = "com.terraformersmc:modmenu", version.ref = "modmenu" }
 sodium = { module = "net.caffeinemc:sodium-fabric", version.ref = "sodium" }

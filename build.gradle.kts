@@ -39,6 +39,10 @@ repositories {
 		name = "CaffeineMC"
 		content { includeGroup("net.caffeinemc") }
 	}
+	maven("https://maven.nucleoid.xyz") {
+		name = "Nucleoid"
+		content { includeGroup("eu.pb4") }
+	}
 	maven("https://api.modrinth.com/maven") {
 		name = "Modrinth"
 		content { includeGroup("maven.modrinth") }
@@ -155,6 +159,11 @@ dependencies {
 	minecraft(libs.minecraft)
 	implementation(libs.fabric.loader)
 	implementation(libs.fabric.api)
+
+	// Claim mods' shared protection API: compiled against, and called only when a claim mod has loaded it
+	// (content/Protection.java). The game tests load it, to register a provider of their own.
+	compileOnly(libs.common.protection.api)
+	"gametestImplementation"(libs.common.protection.api)
 
 	// Dev-only mods: on the runClient classpath, but not in the jar or its dependency metadata.
 	localRuntime(libs.modmenu)

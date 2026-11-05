@@ -10,6 +10,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 
+import io.github.pavelgar.principia.content.Protection;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
@@ -506,11 +507,11 @@ public final class Placement {
 	}
 
 	/**
-	 * Whether a player may build in a cell: not in adventure mode, nor under spawn protection, which only the server
-	 * sees.
+	 * Whether a player may build in a cell: not in adventure mode, under spawn protection, or in another's claim, the
+	 * last two of which only the server sees ({@link Protection#mayPlace}).
 	 */
 	private static boolean mayBuild(Level level, Player player, BlockPos cell) {
-		return player.mayBuild() && level.mayInteract(player, cell);
+		return Protection.mayPlace(level, player, cell);
 	}
 
 	/**

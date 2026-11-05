@@ -175,30 +175,121 @@ public class SkyLineBreakingGameTest {
 	 * Breaking a rail, as a client sends it once mining is done, removes its whole segment from both anchors and drops
 	 * its rails along it, but not the anchors' own: the anchor between it and the next segment keeps that one, and the
 	 * west anchor, left alone, stays, and a click with a Sky-Line selects it again. The player stands 1 block south of
-	 * the right rail, 5 along it.
+	 * the right rail, 5 along it, and mines it as long as its anchor takes them.
 	 */
-	@GameTest(structure = AREA)
+	@GameTest(structure = AREA, maxTicks = 300)
 	public void breakingARailRemovesItsSegmentAndDropsItsRailsAlongIt(GameTestHelper helper) {
 		SkyHookGameTest.floor(helper);
 		SkyHookGameTest.lay(helper, WEST, SkyHookGameTest.straight(10), SkyHookGameTest.straight(3));
 		TestPlayer player = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 2, 6.5), 180, -20);
+		RailPoint onTheRail = new RailPoint(helper.absolutePos(WEST), AnchorSide.FRONT, RailSide.RIGHT, 5);
+		RailBreaking.startMining(player, onTheRail);
 
-		RailBreaking.breakRail(player, new RailPoint(helper.absolutePos(WEST), AnchorSide.FRONT, RailSide.RIGHT, 5));
+		helper.startSequence()
+				.thenIdle(miningTicks(helper, player))
+				.thenExecute(() -> {
+					RailBreaking.breakRail(player, onTheRail);
+					assertRailsFellAlongTheStraight(helper, false);
+					helper.assertValueEqual(helper.getBlockEntity(EAST, AnchorBlockEntity.class).segments(),
+							List.of(SkyHookGameTest.straight(3)), "the segments of the anchor between them");
+				})
+				.thenIdle(1)
+				.thenExecute(() -> {
+					assertAlone(helper, WEST);
+					player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(SkyLine.RAIL));
+					BlockPos west = helper.absolutePos(WEST);
+					player.gameMode.useItemOn(player, helper.getLevel(), player.getMainHandItem(),
+							InteractionHand.MAIN_HAND,
+							new BlockHitResult(Vec3.atCenterOf(west), Direction.UP, west, false));
+					helper.assertValueEqual(Optional.ofNullable(TrackStart.of(player)),
+							Optional.of(new TrackStart(west, Optional.empty())), "the selection");
+					TestPlayer.remove(helper, player);
+				})
+				.thenSucceed();
+	}
 
-		assertRailsFellAlongTheStraight(helper, false);
-		helper.assertValueEqual(helper.getBlockEntity(EAST, AnchorBlockEntity.class).segments(),
-				List.of(SkyHookGameTest.straight(3)), "the segments of the anchor between them");
-		helper.runAfterDelay(1, () -> {
-			assertAlone(helper, WEST);
-			player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(SkyLine.RAIL));
-			BlockPos west = helper.absolutePos(WEST);
-			player.gameMode.useItemOn(player, helper.getLevel(), player.getMainHandItem(), InteractionHand.MAIN_HAND,
-					new BlockHitResult(Vec3.atCenterOf(west), Direction.UP, west, false));
-			helper.assertValueEqual(Optional.ofNullable(TrackStart.of(player)),
-					Optional.of(new TrackStart(west, Optional.empty())), "the selection");
-			TestPlayer.remove(helper, player);
-			helper.succeed();
-		});
+	/**
+	 * The server times mining a rail as vanilla's times mining a block: from the start the client tells it of, a break
+	 * that comes before 0.7 of the anchor's mining time is refused. So is one with no start, or after starting on
+	 * another segment. Each mines from the same spot; the one who mined as long as the anchor takes them breaks it, and
+	 * only then.
+	 */
+	@GameTest(structure = AREA, maxTicks = 300)
+	public void theServerBreaksARailOnlyOnceMinedForTheAnchorsMiningTime(GameTestHelper helper) {
+		SkyHookGameTest.floor(helper);
+		Segment straight = SkyHookGameTest.straight(10);
+		SkyHookGameTest.lay(helper, WEST, straight, SkyHookGameTest.straight(3));
+		RailPoint onTheRail = new RailPoint(helper.absolutePos(WEST), AnchorSide.FRONT, RailSide.RIGHT, 5);
+		RailPoint onTheNext = new RailPoint(helper.absolutePos(EAST), AnchorSide.FRONT, RailSide.RIGHT, 1);
+		TestPlayer early = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 2, 6.5), 180, -20);
+		TestPlayer unstarted = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 2, 6.5), 180, -20);
+		TestPlayer elsewhere = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(10.5, 2, 6.5), 180, -20);
+		TestPlayer miner = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 2, 6.5), 180, -20);
+		RailBreaking.startMining(early, onTheRail);
+		RailBreaking.startMining(elsewhere, onTheNext);
+		RailBreaking.startMining(miner, onTheRail);
+		int full = miningTicks(helper, miner);
+		// 0.7 of the mining time, less a tick: one more tick of progress than this still falls short.
+		int tooEarly = (int) Math.ceil(0.7 * full) - 2;
+
+		helper.startSequence()
+				.thenIdle(tooEarly)
+				.thenExecute(() -> {
+					RailBreaking.breakRail(early, onTheRail);
+					helper.assertValueEqual(helper.getBlockEntity(WEST, AnchorBlockEntity.class).segments(),
+							List.of(straight), "the west anchor's segments after a break " + tooEarly + " ticks in");
+				})
+				.thenIdle(full - tooEarly)
+				.thenExecute(() -> {
+					RailBreaking.breakRail(unstarted, onTheRail);
+					RailBreaking.breakRail(elsewhere, onTheRail);
+					helper.assertValueEqual(helper.getBlockEntity(WEST, AnchorBlockEntity.class).segments(),
+							List.of(straight), "the west anchor's segments after breaks with no start or another's");
+					RailBreaking.breakRail(miner, onTheRail);
+					helper.assertValueEqual(helper.getBlockEntity(WEST, AnchorBlockEntity.class).segments(), List.of(),
+							"the west anchor's segments after a break " + full + " ticks in");
+					TestPlayer.remove(helper, early, unstarted, elsewhere, miner);
+				})
+				.thenSucceed();
+	}
+
+	/**
+	 * Claim mods keep players from breaking rails in their claims, through either convention they share: one player
+	 * is kept from the west anchor's cell through Fabric API's break event, which then reports the break canceled;
+	 * another from the east anchor's through the common protection API. Neither breaks the segment between them, mined
+	 * as long as it takes; a player no claim keeps out does.
+	 */
+	@GameTest(structure = AREA, maxTicks = 300)
+	public void aClaimOverEitherAnchorKeepsAPlayerFromBreakingTheirRail(GameTestHelper helper) {
+		SkyHookGameTest.floor(helper);
+		Segment straight = SkyHookGameTest.straight(10);
+		SkyHookGameTest.lay(helper, WEST, straight);
+		RailPoint onTheRail = new RailPoint(helper.absolutePos(WEST), AnchorSide.FRONT, RailSide.RIGHT, 5);
+		TestPlayer byEvent = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 2, 6.5), 180, -20);
+		TestPlayer byProtection = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 2, 6.5), 180, -20);
+		TestPlayer owner = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 2, 6.5), 180, -20);
+		TestClaims.byEvent(byEvent, helper.absolutePos(WEST));
+		TestClaims.byCommonProtection(byProtection, helper.absolutePos(EAST));
+		for (TestPlayer player : List.of(byEvent, byProtection, owner)) {
+			RailBreaking.startMining(player, onTheRail);
+		}
+
+		helper.startSequence()
+				.thenIdle(miningTicks(helper, owner))
+				.thenExecute(() -> {
+					RailBreaking.breakRail(byEvent, onTheRail);
+					RailBreaking.breakRail(byProtection, onTheRail);
+					helper.assertValueEqual(helper.getBlockEntity(WEST, AnchorBlockEntity.class).segments(),
+							List.of(straight), "the west anchor's segments after the claimed breaks");
+					helper.assertValueEqual(TestClaims.canceled(byEvent), List.of(helper.absolutePos(WEST)),
+							"the breaks canceled for the player kept out by the event");
+					RailBreaking.breakRail(owner, onTheRail);
+					helper.assertValueEqual(helper.getBlockEntity(WEST, AnchorBlockEntity.class).segments(), List.of(),
+							"the west anchor's segments after the owner's break");
+					TestClaims.lift(byEvent, byProtection, owner);
+					TestPlayer.remove(helper, byEvent, byProtection, owner);
+				})
+				.thenSucceed();
 	}
 
 	/** In creative, breaking a rail drops nothing. */
@@ -222,32 +313,53 @@ public class SkyLineBreakingGameTest {
 	 * about 9.1 from the eyes), a segment that isn't there, a player in adventure mode, a spectator, and a creative
 	 * player holding a sword, which breaks no blocks. Each leaves the segment and drops nothing.
 	 */
-	@GameTest(structure = AREA)
+	@GameTest(structure = AREA, maxTicks = 300)
 	public void theServerRefusesABreakOutOfReachGoneOrByAPlayerWhoMayNotBreakIt(GameTestHelper helper) {
 		SkyHookGameTest.floor(helper);
 		Segment straight = SkyHookGameTest.straight(10);
 		SkyHookGameTest.lay(helper, WEST, straight);
 		RailPoint onTheRail = new RailPoint(helper.absolutePos(WEST), AnchorSide.FRONT, RailSide.RIGHT, 5);
 
+		RailPoint gonePoint = new RailPoint(helper.absolutePos(WEST), AnchorSide.BACK, RailSide.RIGHT, 5);
 		TestPlayer far = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 1, 14.5), 180, 0);
-		RailBreaking.breakRail(far, onTheRail);
 		TestPlayer gone = TestPlayer.place(helper, GameType.SURVIVAL, new Vec3(7.5, 2, 6.5), 180, -20);
-		RailBreaking.breakRail(gone, new RailPoint(helper.absolutePos(WEST), AnchorSide.BACK, RailSide.RIGHT, 5));
 		TestPlayer adventure = TestPlayer.place(helper, GameType.ADVENTURE, new Vec3(7.5, 2, 6.5), 180, -20);
-		RailBreaking.breakRail(adventure, onTheRail);
 		TestPlayer spectator = TestPlayer.place(helper, GameType.SPECTATOR, new Vec3(7.5, 2, 6.5), 180, -20);
-		RailBreaking.breakRail(spectator, onTheRail);
 		TestPlayer sword = TestPlayer.place(helper, GameType.CREATIVE, new Vec3(7.5, 2, 6.5), 180, -20);
 		sword.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_SWORD));
-		RailBreaking.breakRail(sword, onTheRail);
+		// Each mines as long as it takes, so each is refused for its own reason, not for mining too short.
+		for (TestPlayer player : List.of(far, adventure, spectator, sword)) {
+			RailBreaking.startMining(player, onTheRail);
+		}
+		RailBreaking.startMining(gone, gonePoint);
 
-		helper.assertValueEqual(helper.getBlockEntity(WEST, AnchorBlockEntity.class).segments(), List.of(straight),
-				"the west anchor's segments");
-		helper.assertValueEqual(helper.getBlockEntity(EAST, AnchorBlockEntity.class).segments(),
-				List.of(straight.reversed()), "the east anchor's segments");
-		helper.assertValueEqual(rails(helper), 0, "the rails on the ground");
-		TestPlayer.remove(helper, far, gone, adventure, spectator, sword);
-		helper.succeed();
+		helper.startSequence()
+				.thenIdle(miningTicks(helper, adventure))
+				.thenExecute(() -> {
+					RailBreaking.breakRail(far, onTheRail);
+					RailBreaking.breakRail(gone, gonePoint);
+					RailBreaking.breakRail(adventure, onTheRail);
+					RailBreaking.breakRail(spectator, onTheRail);
+					RailBreaking.breakRail(sword, onTheRail);
+					helper.assertValueEqual(helper.getBlockEntity(WEST, AnchorBlockEntity.class).segments(),
+							List.of(straight), "the west anchor's segments");
+					helper.assertValueEqual(helper.getBlockEntity(EAST, AnchorBlockEntity.class).segments(),
+							List.of(straight.reversed()), "the east anchor's segments");
+					helper.assertValueEqual(rails(helper), 0, "the rails on the ground");
+					TestPlayer.remove(helper, far, gone, adventure, spectator, sword);
+				})
+				.thenSucceed();
+	}
+
+	/**
+	 * How many ticks a player's client mines a rail for, by hand: until the anchor block's mining reaches 1, as the
+	 * client counts it, which is the earliest it sends the break. The tests' players stand in the air, within reach of
+	 * the rail, so it takes them five times as long as on the ground, as vanilla's mining does: about 105 ticks.
+	 */
+	private static int miningTicks(GameTestHelper helper, TestPlayer player) {
+		BlockPos west = helper.absolutePos(WEST);
+		float perTick = SkyLine.ANCHOR.defaultBlockState().getDestroyProgress(player, helper.getLevel(), west);
+		return (int) Math.ceil(1 / perTick);
 	}
 
 	/**

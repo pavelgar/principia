@@ -749,6 +749,34 @@ public class SkyLineItemGameTest {
 	}
 
 	/**
+	 * Claim mods keep players from laying track into their claims, through the common protection API: a player kept
+	 * out of the cell 10 east of their lone anchor lays nothing to it, is told they may not build, and keeps their
+	 * Sky-Lines (15 of 16, after the anchor). A player no claim keeps out lays the straight there.
+	 */
+	@GameTest(structure = AREA)
+	public void aClaimKeepsAPlayerFromLayingTrackIntoIt(GameTestHelper helper) {
+		SkyHookGameTest.floor(helper);
+		BlockPos end = START.east(10);
+		TestPlayer claimed = layer(helper, GameType.SURVIVAL, 16, EAST);
+		placeAndSelect(helper, claimed, START);
+		TestClaims.byCommonProtection(claimed, helper.absolutePos(end));
+
+		layTo(helper, claimed, end.below());
+		helper.assertBlockNotPresent(SkyLine.ANCHOR, end);
+		helper.assertValueEqual(claimed.overlay, List.of(red(SkyLine.MAY_NOT_BUILD)),
+				"the claimed player's action bar");
+		helper.assertValueEqual(claimed.getMainHandItem().getCount(), 15, "the claimed player's Sky-Lines");
+
+		TestPlayer owner = layer(helper, GameType.SURVIVAL, 16, EAST);
+		clickTop(helper, owner, START);
+		layTo(helper, owner, end.below());
+		assertAnchor(helper, end, Heading.EAST, SkyHookGameTest.straight(10).reversed());
+		TestClaims.lift(claimed, owner);
+		TestPlayer.remove(helper, claimed, owner);
+		helper.succeed();
+	}
+
+	/**
 	 * With an anchor selected, a plain click on a block through vanilla's use on a block lays nothing: laying only
 	 * comes through the block the client sends, with the heading it showed.
 	 */

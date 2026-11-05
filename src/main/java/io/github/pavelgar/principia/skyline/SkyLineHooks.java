@@ -21,7 +21,7 @@ import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityDataRegistry
  * Where the Sky-Line meets Fabric API, with the client's {@code SkyLineClientHooks}: each level's {@link Track} and each
  * player's selected anchor ({@link TrackStart}) as data attachments, the events that tell anchors they loaded or
  * unloaded, that a server tick ended and that a player changed dimension, the payloads a client sends of the rail it
- * uses an item on or breaks and of the block it lays track to, and the hook's synced rail point. A port to another
+ * uses an item on, starts mining or breaks and of the block it lays track to, and the hook's synced rail point. A port to another
  * loader replaces these two classes.
  */
 public final class SkyLineHooks {
@@ -31,6 +31,10 @@ public final class SkyLineHooks {
 	private static final AttachmentType<TrackStart> SELECTION = AttachmentRegistry.create(Principia.id("selection"),
 			builder -> builder.persistent(TrackStart.CODEC).syncWith(TrackStart.STREAM_CODEC,
 					AttachmentSyncPredicate.targetOnly()));
+
+	/** The rail a player is mining, on the server only: neither saved nor sent, as vanilla keeps a block's mining. */
+	private static final AttachmentType<RailBreaking.Mining> MINING = AttachmentRegistry
+			.create(Principia.id("mining_rail"));
 
 	private SkyLineHooks() {
 	}
@@ -68,6 +72,13 @@ public final class SkyLineHooks {
 				Placement.lay(context.player(), payload.hand(), payload.hit(), payload.chosen());
 			}
 		});
+		PayloadTypeRegistry.serverboundPlay().register(StartMiningRailPayload.TYPE,
+				StartMiningRailPayload.STREAM_CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(StartMiningRailPayload.TYPE, (payload, context) -> {
+			if (ClientActions.accept(context.player())) {
+				RailBreaking.startMining(context.player(), payload.target());
+			}
+		});
 		PayloadTypeRegistry.serverboundPlay().register(BreakRailPayload.TYPE, BreakRailPayload.STREAM_CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(BreakRailPayload.TYPE, (payload, context) -> {
 			if (ClientActions.accept(context.player())) {
@@ -78,6 +89,14 @@ public final class SkyLineHooks {
 
 	static Track track(Level level) {
 		return level.getAttachedOrCreate(TRACK);
+	}
+
+	static RailBreaking.@Nullable Mining mining(Player player) {
+		return player.getAttached(MINING);
+	}
+
+	static void mine(Player player, RailBreaking.@Nullable Mining mining) {
+		player.setAttached(MINING, mining);
 	}
 
 	static @Nullable TrackStart selection(Player player) {
