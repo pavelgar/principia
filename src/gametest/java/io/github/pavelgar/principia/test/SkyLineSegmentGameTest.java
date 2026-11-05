@@ -386,7 +386,7 @@ public class SkyLineSegmentGameTest {
 	public void anchorsAndTheTrackStillHoldASegmentAfterItsChunkReloads(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
 		Segment pitched = segment(new Vec3i(5, 0, 0), Heading.EAST, 30, Heading.EAST, 0);
-		BlockPos from = farChunk(helper, 40, 0).offset(2, 0, 4);
+		BlockPos from = farChunk(helper, 1, 0).offset(2, 0, 4);
 		BlockPos to = from.offset(pitched.offset());
 		setForced(level, from, true);
 		layAt(level, from, pitched);
@@ -422,7 +422,7 @@ public class SkyLineSegmentGameTest {
 	@GameTest(maxTicks = 300)
 	public void anAnchorWhosePartnerWentWhileItWasUnloadedDropsTheSegmentWhenItLoads(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
-		BlockPos west = farChunk(helper, 0, 80).offset(2, 0, 4);
+		BlockPos west = farChunk(helper, 0, 1).offset(2, 0, 4);
 		BlockPos east = west.offset(APART.offset());
 		setForced(level, west, true);
 		setForced(level, east, true);
@@ -452,7 +452,7 @@ public class SkyLineSegmentGameTest {
 	@GameTest(maxTicks = 300)
 	public void aSegmentChangedWhileItsPartnerWasUnloadedIsDroppedWhenThePartnerLoads(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
-		BlockPos west = farChunk(helper, 0, -80).offset(2, 0, 4);
+		BlockPos west = farChunk(helper, 0, -1).offset(2, 0, 4);
 		BlockPos east = west.offset(APART.offset());
 		setForced(level, west, true);
 		setForced(level, east, true);
@@ -541,16 +541,25 @@ public class SkyLineSegmentGameTest {
 	}
 
 	/**
-	 * The north-west corner, at the test's height plus 3, of a chunk far from the test's, loaded only while forced.
-	 * The tests sit a few chunks apart, so each test that uses one goes its own way, and a forced chunk keeps no other
-	 * test's chunk loaded.
+	 * The north-west corner, at the test's height plus 3, of a chunk far from every test, loaded only while forced.
+	 * Each copy of a test gets its own ({@code -Pgametest_repeat} lays copies a structure's width apart): the chunk is
+	 * {@link #SPREAD} chunks out for each block the test is from the world's origin, so the chunks of two copies, and
+	 * an {@link #APART} segment's other end, stay further apart than the 13 chunks a forced chunk keeps loaded around
+	 * it. Tests that use one go different ways, by {@link #FAR} chunks east or south.
 	 */
-	private static BlockPos farChunk(GameTestHelper helper, int chunksEast, int chunksSouth) {
+	private static BlockPos farChunk(GameTestHelper helper, int east, int south) {
 		BlockPos origin = helper.absolutePos(BlockPos.ZERO);
-		return new BlockPos(SectionPos.sectionToBlockCoord(SectionPos.blockToSectionCoord(origin.getX()) + chunksEast),
-				origin.getY() + 3,
-				SectionPos.sectionToBlockCoord(SectionPos.blockToSectionCoord(origin.getZ()) + chunksSouth));
+		int x = SPREAD * Math.floorMod(origin.getX(), WRAP) + east * FAR;
+		int z = SPREAD * Math.floorMod(origin.getZ(), WRAP) + south * FAR;
+		return new BlockPos(SectionPos.sectionToBlockCoord(x), origin.getY() + 3, SectionPos.sectionToBlockCoord(z));
 	}
+
+	/** Chunks between the far chunks of two tests a block apart: copies are 13 or more blocks apart. */
+	private static final int SPREAD = 4;
+	/** Chunks between the far chunks of different tests. */
+	private static final int FAR = 1 << 15;
+	/** Where test positions wrap, in blocks, keeping far chunks inside the world border with a random origin. */
+	private static final int WRAP = 1 << 16;
 
 	/**
 	 * Asserts that an anchor's chunk has unloaded, which removes its block entity. A server unloads the chunks no

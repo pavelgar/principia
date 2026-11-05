@@ -87,8 +87,9 @@ loom {
 	//                            case: -Pgametest=sky_hook_game_test, -Pgametest=a_rider_at_speed_hops. A value with
 	//                            `*` or `?` is a pattern for the whole id instead (sky_hook_game_test_the_server_*);
 	//                            either way the namespace principia-test: is added unless the value has one.
-	//   -Pgametest_repeat=N      runs each test N times, to find flaky ones: a new test should pass with N=100. Tests
-	//                            that build outside their structure (chunk unloading) collide with their own copies.
+	//   -Pgametest_repeat=N      runs each test N times, to find flaky ones: a new test should pass with N=100. The
+	//                            copies run side by side: a test that builds outside its structure gives each copy its
+	//                            own place (SkyLineSegmentGameTest.farChunk).
 	//   -Pgametest_verify        vanilla's verify: 100 times in each of the 4 rotations. Only tests written to turn
 	//                            with their structure pass it; today's use world headings, so use repeat instead.
 	//   -Pgametest_origin=x,z    where the tests are laid out (default 0,0; `random` for vanilla's random spot), so a
