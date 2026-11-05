@@ -138,7 +138,7 @@ val agentVariable: Provider<String> = listOf(
 	.reduce { first, next -> first.orElse(next) }
 
 // These open the game for a person to play and never exit, so they refuse to start under an agent, which would wait
-// on them forever. scripts/agent-guard.sh stops the usual spellings of the command earlier; this stops every spelling.
+// on them forever.
 tasks.withType<net.fabricmc.loom.task.RunGameTask>().matching { it.name in setOf("runClient", "runServer", "runClientRenderDoc") }.configureEach {
 	val agent = agentVariable
 	doFirst {
