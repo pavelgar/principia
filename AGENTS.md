@@ -8,7 +8,7 @@ Minecraft numbers its versions by year now (26.1 followed 1.21.11). Since 26.1 i
 
 The current forms of what you'll be tempted to write from memory:
 - No mappings: depend on `fabric-api` with plain `implementation`, and use Mojang names throughout. (Gone: `mappings(...)`, `modImplementation`, `remapJar`, the mod ID `fabric`, and Yarn names such as `MinecraftClient`, `ItemGroup`, `RegistryKeys`, `Text`, `PlayerEntity`.)
-- Identifiers are `net.minecraft.resources.Identifier.fromNamespaceAndPath(ns, path)`, or `Principia.id("path")` here.
+- Identifiers are `net.minecraft.resources.Identifier` (it replaced `ResourceLocation`): `Identifier.fromNamespaceAndPath(ns, path)`, or `Principia.id("path")` here.
 - Fabric API classes carry Mojang names too: `CreativeModeTabEvents` in `net.fabricmc.fabric.api.creativetab.v1`.
 - Item and block properties take their registry key: `new Item.Properties().setId(ResourceKey)`. Registries are `BuiltInRegistries` and `Registries`.
 - Item data lives in **data components** (`DataComponents`, `DataComponentType`).
@@ -29,7 +29,7 @@ Gradle tasks in one checkout run one at a time; separate worktrees build in para
 
 - `./gradlew quickCheck`: the inner loop, in seconds. Formats, compiles every source set, runs the JUnit tests; no game starts. The Stop hook runs it after any turn that changed code and sends you back with the first errors.
 - `./gradlew build`: compile, JUnit and fuzz-input replay, server game tests, formatting, jar.
-- `./gradlew runGameTest`: the server game tests alone, in a fresh world at a fixed origin, so a failure reruns as it failed. `-Pgametest=<part of the id>`, `-Pgametest_repeat=100` and `-Pgametest_origin=random` are explained in the comment above that task in `build.gradle.kts`.
+- `./gradlew runGameTest`: the server game tests alone, in a fresh world at a fixed origin, so a failure reruns as it failed. `-Pgametest=<part of the id>`, `-Pgametest_repeat=100` and `-Pgametest_origin=random` are explained in `build.gradle.kts`, in the comment starting `// Server game tests (runGameTest)`.
 - `scripts/client-gametest.sh [--only=<Class>]`: the client game tests, headless; prints the `build/evidence/...` folder holding their screenshots and log. Not part of `build`.
 - `./gradlew runDatagen`: regenerates `src/main/generated/` after a datagen provider changes.
 - `./gradlew pitest -Ppit_target=<package>.<Class>*`: mutation testing; surviving mutants land in `build/reports/pitest/mutations.xml`.
@@ -44,7 +44,7 @@ Logs, when Gradle's output isn't enough: `build/reports/`, `build/run/gameTest/l
 
 ## Done
 
-A change is done when `scripts/verify.sh` ends in `RESULT: PASS`. It runs what CI runs on the checkout as it is: self-checks, `build`, datagen staleness, and the client game tests when the change reaches them (`--client` forces them). Run it after `quickCheck` and the change's own tests pass.
+A change is done when `scripts/verify.sh` ends in `RESULT: PASS`. It runs what CI runs on the checkout as it is, and first fails on build inputs CI wouldn't see (untracked, or under `src/` and gitignored: `git add` or delete them; edits to tracked files may stay uncommitted): self-checks, `build`, datagen staleness, and the client game tests when the change reaches them (`--client` forces them). Run it after `quickCheck` and the change's own tests pass.
 
 Each kind of change also needs evidence: a test that fails without it.
 
@@ -91,5 +91,5 @@ Design rules for code not yet written:
 For when you change the agent setup itself:
 - This is the only instruction file, read natively by Codex and by Claude Code (2.1.277+). Any `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` in the checkout or above it makes Claude Code skip it.
 - Skills live in `.agents/skills/` (Codex's location), each with a symlink in `.claude/skills/`; `scripts/check-skills.sh` checks the pairing in CI.
-- Both tools share the hooks in `scripts/`: `session-start.sh`, `stop-check.sh`, and `agent-guard.sh`, which blocks commands that hang, reach other worktrees, publish, or push tags (the human releases); its tests are `scripts/test-agent-guard.sh`. Command permissions are kept in step in `.claude/settings.json` and `.codex/rules/principia.rules`.
+- Both tools share the hooks in `scripts/`: `session-start.sh`, `stop-check.sh`, and `agent-guard.sh`, a best-effort denylist of commands that hang, reach other worktrees, publish, or push tags (the human releases); its tests are `scripts/test-agent-guard.sh`. What holds regardless of the guard: GitHub's `release` environment and `v*` tag ruleset protect releases (header of `.github/workflows/release.yml`), and `runClient`, `runServer` and `scripts/play.sh` refuse to start under an agent's environment variables (`agentVariable` in `build.gradle.kts`). Command permissions are kept in step in `.claude/settings.json` and `.codex/rules/principia.rules`.
 - With the jdtls plugin on, hover gives a Minecraft or Fabric call's exact signature. It can't open library classes; read those in `.references/sources/`.
