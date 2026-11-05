@@ -152,17 +152,21 @@ class StructureTransformTest {
 	}
 
 	/**
-	 * Decoding takes a partner up to {@link Segment.Partner#MAX_SAVED_OFFSET} along every axis, either way, and
-	 * refuses one further along any, or at the anchor itself, which loading would otherwise index section by section.
+	 * Decoding takes a partner up to {@link Segment.Partner#MAX_SAVED_OFFSET} along any one axis and up to
+	 * {@link Segment.Partner#MAX_SAVED_SPREAD} along the other two, either way, and refuses one further, or at the
+	 * anchor itself, which loading would otherwise index section by section.
 	 */
 	@Test
 	void decodingRefusesAPartnerTooFarOrAtItsOwnAnchor() {
 		int max = Segment.Partner.MAX_SAVED_OFFSET;
-		for (int[] fine : new int[][]{{max, 0, 0}, {-max, max, -max}, {1, 0, 0}, {0, -1, 0}}) {
+		int spread = Segment.Partner.MAX_SAVED_SPREAD;
+		for (int[] fine : new int[][]{{max, 0, 0}, {-spread, max, spread}, {spread, -spread, -max}, {1, 0, 0},
+				{0, -1, 0}}) {
 			assertTrue(Segment.Partner.CODEC.parse(NbtOps.INSTANCE, savedPartner(fine)).isSuccess(),
 					Arrays.toString(fine));
 		}
-		for (int[] refused : new int[][]{{max + 1, 0, 0}, {0, -max - 1, 0}, {0, 0, 30_000_000}, {0, 0, 0}}) {
+		for (int[] refused : new int[][]{{max + 1, 0, 0}, {0, -max - 1, 0}, {0, 0, 30_000_000}, {0, 0, 0},
+				{max, spread + 1, 0}, {-spread - 1, 0, spread + 1}, {-max, max, -max}}) {
 			assertTrue(Segment.Partner.CODEC.parse(NbtOps.INSTANCE, savedPartner(refused)).isError(),
 					Arrays.toString(refused));
 		}

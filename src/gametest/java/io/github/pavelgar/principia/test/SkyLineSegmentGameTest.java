@@ -1,5 +1,6 @@
 package io.github.pavelgar.principia.test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -52,6 +53,13 @@ public class SkyLineSegmentGameTest {
 	/** Level, 5 east from (2, 3, 4): rails along x at z = 3.5 and 5.5, their tops at y = 4, from x = 2.5 to 7.5. */
 	private static final BlockPos STRAIGHT_FROM = new BlockPos(2, 3, 4);
 	private static final Segment STRAIGHT = segment(new Vec3i(5, 0, 0), Heading.EAST, 0, Heading.EAST, 0);
+	/**
+	 * Level and east, as long as saved data allows ({@link Segment.Partner#MAX_SAVED_OFFSET}), far past the limits,
+	 * which only placing checks. Its anchors are 32 chunks apart: a forced chunk keeps the 13 around it in memory (up
+	 * to {@code ChunkLevel.MAX_LEVEL}), so with one end forced, the other's chunk unloads.
+	 */
+	private static final Segment APART = segment(new Vec3i(Segment.Partner.MAX_SAVED_OFFSET, 0, 0), Heading.EAST, 0,
+			Heading.EAST, 0);
 	/** A 16 × 10 × 16 area, for tests that need more room than the default one. */
 	private static final String WIDE = "principia-test:sky_line";
 	/** A segment that bends, from an anchor at (2, 3, 2) heading east, pitched up, to one heading south-east. */
@@ -210,20 +218,23 @@ public class SkyLineSegmentGameTest {
 	/**
 	 * Saved data can hold any offset, from {@code /data} or a structure file, and the track indexes every chunk section
 	 * in a segment's bounding box: 30 million blocks off along two axes, trillions of them. The anchor refuses a partner
-	 * that far as it loads, and holds no segment there. (East only here, 1.9 million sections, so that a regression
-	 * fails the test rather than hanging the run.)
+	 * that far as it loads, and holds no segment there: 30 million east (1.9 million sections, so that a regression
+	 * fails the test rather than hanging the run), or 512 east and 65 south, past what saved data allows along two axes.
 	 */
 	@GameTest
 	public void anAnchorRefusesASavedPartnerTooFarAway(GameTestHelper helper) {
 		lay(helper, STRAIGHT_FROM, STRAIGHT);
 		AnchorBlockEntity west = helper.getBlockEntity(STRAIGHT_FROM, AnchorBlockEntity.class);
-		CompoundTag saved = west.saveCustomOnly(helper.getLevel().registryAccess());
-		CompoundTag front = saved.getCompound("front").orElseThrow();
-		front.put("offset", new IntArrayTag(new int[]{30_000_000, 0, 0}));
+		for (int[] tooFar : new int[][]{{30_000_000, 0, 0}, {512, 0, 65}}) {
+			CompoundTag saved = west.saveCustomOnly(helper.getLevel().registryAccess());
+			saved.getCompound("front").orElseThrow().put("offset", new IntArrayTag(tooFar));
 
-		west.loadCustomOnly(
-				TagValueInput.create(ProblemReporter.DISCARDING, helper.getLevel().registryAccess(), saved));
-		helper.assertValueEqual(west.segments(), List.of(), "the segments loaded with a partner 30 million east");
+			west.loadCustomOnly(
+					TagValueInput.create(ProblemReporter.DISCARDING, helper.getLevel().registryAccess(), saved));
+			helper.assertValueEqual(west.segments(), List.of(),
+					"the segments loaded with a partner " + Arrays.toString(tooFar) + " away");
+			west.setSegment(STRAIGHT);
+		}
 		helper.succeed();
 	}
 
@@ -404,19 +415,18 @@ public class SkyLineSegmentGameTest {
 	}
 
 	/**
-	 * A segment 512 blocks long, far past the limits (which only placing checks), so that its east anchor's chunk
-	 * unloads while the west one's stays forced. A forced chunk keeps those within 2 of it loaded, and one 6 chunks
-	 * away never unloaded in this test. The west anchor is removed while the east one is unloaded, which holds the
-	 * segment until it loads and finds no anchor there. Left with no segment, it stays, alone.
+	 * {@link #APART}, whose east anchor's chunk unloads while the west one's stays forced. The west anchor is removed
+	 * while the east one is unloaded, which holds the segment until it loads and finds no anchor there. Left with no
+	 * segment, it stays, alone.
 	 */
 	@GameTest(maxTicks = 300)
 	public void anAnchorWhosePartnerWentWhileItWasUnloadedDropsTheSegmentWhenItLoads(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
 		BlockPos west = farChunk(helper, 0, 80).offset(2, 0, 4);
-		BlockPos east = west.east(512);
+		BlockPos east = west.offset(APART.offset());
 		setForced(level, west, true);
 		setForced(level, east, true);
-		layAt(level, west, segment(new Vec3i(512, 0, 0), Heading.EAST, 0, Heading.EAST, 0));
+		layAt(level, west, APART);
 		AnchorBlockEntity eastBefore = anchorAt(level, east);
 		setForced(level, east, false);
 
@@ -443,11 +453,10 @@ public class SkyLineSegmentGameTest {
 	public void aSegmentChangedWhileItsPartnerWasUnloadedIsDroppedWhenThePartnerLoads(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
 		BlockPos west = farChunk(helper, 0, -80).offset(2, 0, 4);
-		BlockPos east = west.east(512);
+		BlockPos east = west.offset(APART.offset());
 		setForced(level, west, true);
 		setForced(level, east, true);
-		Segment level512 = segment(new Vec3i(512, 0, 0), Heading.EAST, 0, Heading.EAST, 0);
-		layAt(level, west, level512);
+		layAt(level, west, APART);
 		AnchorBlockEntity eastBefore = anchorAt(level, east);
 		setForced(level, east, false);
 
@@ -458,8 +467,8 @@ public class SkyLineSegmentGameTest {
 					AnchorBlockEntity changed = anchorAt(level, west);
 					changed.removeSegment(AnchorSide.FRONT);
 					changed.setPitch(10);
-					changed.setSegment(new Segment(level512.offset(),
-							new Segment.End(new AnchorTangent(Heading.EAST, 10), AnchorSide.FRONT), level512.to()));
+					changed.setSegment(new Segment(APART.offset(),
+							new Segment.End(new AnchorTangent(Heading.EAST, 10), AnchorSide.FRONT), APART.to()));
 					setForced(level, east, true);
 				})
 				.thenWaitUntil(() -> {
