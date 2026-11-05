@@ -84,7 +84,8 @@ class StructureTransformTest {
 
 	/**
 	 * Two anchors anywhere, with the partner's offset and heading saved at one of them: after any mirror and rotation
-	 * about any pivot, the turned partner is where vanilla moves the other anchor, heading as its moved block does.
+	 * about any pivot, the turned partner is where vanilla moves the other anchor, heading at the cell vanilla moves the
+	 * one it headed at to.
 	 */
 	@Test
 	void aPartnerTurnsToWhereItsAnchorMoves() {
@@ -105,8 +106,12 @@ class StructureTransformTest {
 
 			Segment.Partner turned = partner.transformed(mirror, rotation);
 			BlockPos movedAnchor = moved(anchor, mirror, rotation, pivot);
-			assertEquals(moved(anchor.offset(offset), mirror, rotation, pivot), movedAnchor.offset(turned.offset()));
-			assertEquals(heading.transformed(mirror, rotation), turned.tangent().heading());
+			BlockPos movedPartner = moved(anchor.offset(offset), mirror, rotation, pivot);
+			assertEquals(movedPartner, movedAnchor.offset(turned.offset()));
+			// The partner's heading points from its cell to the cell one step on, wherever vanilla moved the two.
+			Vec3i movedStep = moved(anchor.offset(offset).offset(heading.step()), mirror, rotation, pivot)
+					.subtract(movedPartner);
+			assertEquals(movedStep, turned.tangent().heading().step());
 			assertEquals(partner.tangent().pitch(), turned.tangent().pitch());
 			assertEquals(partner.side(), turned.side());
 		}

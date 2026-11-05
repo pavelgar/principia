@@ -14,9 +14,12 @@ import io.github.pavelgar.principia.skyline.SegmentIndex;
 import io.github.pavelgar.principia.skyline.Track;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.gametest.framework.GameTestSequence;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntArrayTag;
 import net.minecraft.server.MinecraftServer;
@@ -25,11 +28,13 @@ import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.minecraft.world.level.storage.TagValueInput;
@@ -49,53 +54,138 @@ public class SkyLineSegmentGameTest {
 	private static final Segment STRAIGHT = segment(new Vec3i(5, 0, 0), Heading.EAST, 0, Heading.EAST, 0);
 	/** A 16 × 10 × 16 area, for tests that need more room than the default one. */
 	private static final String WIDE = "principia-test:sky_line";
+	/** A segment that bends, from an anchor at (2, 3, 2) heading east, pitched up, to one heading south-east. */
+	private static final BlockPos BEND_FROM = new BlockPos(2, 3, 2);
+	private static final Segment BEND = segment(new Vec3i(4, 0, 2), Heading.EAST, 10, Heading.SOUTH_EAST, 0);
+	/** The north-west corner of the 7 × 1 × 5 cells around {@link #BEND}, its anchors' beam ends among them. */
+	private static final BlockPos BEND_CORNER = new BlockPos(1, 3, 1);
+	/** A cell beside {@link #BEND} that no beam end takes. */
+	private static final BlockPos CHEST = new BlockPos(4, 3, 1);
+	/** Where copies of the cells around {@link #BEND} go: above it, and in the area however they turn. */
+	private static final BlockPos COPY_AT = new BlockPos(8, 6, 8);
 
 	/**
-	 * A structure holding a segment that bends, from an anchor at (2, 3, 2) heading east and pitched up to one 4 east
-	 * and 2 south heading south-east, saved from the level with both anchors' beam ends, and placed mirrored left to
-	 * right and turned a quarter clockwise, which together swap x and z. Vanilla turns the anchors' blocks and loads
-	 * their saved data unchanged: the segments turn with them, so at the end of the tick, when the copies are checked
-	 * against each other, both still hold it, as one segment between where the two anchors went.
+	 * A structure holding a segment that bends and a chest holding 3 diamonds, saved from the level with both anchors'
+	 * beam ends, and placed in every mirror and rotation in turn, above the original. Vanilla turns the blocks and
+	 * loads their saved data unchanged: the segment turns with its anchors, so at the end of the tick, when the copies
+	 * are checked against each other, both still hold it, between where vanilla moved the two anchors and leaving and
+	 * arriving as vanilla turns the original's headings. The chest loads its data as saved. Each placement turns the
+	 * structure's data afresh: the structure keeps it as saved.
+	 */
+	@GameTest(structure = WIDE, maxTicks = 60)
+	public void aSegmentTurnsWithAStructurePlacedEveryWay(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
+		lay(helper, BEND_FROM, BEND);
+		helper.setBlock(CHEST, Blocks.CHEST);
+		helper.getBlockEntity(CHEST, ChestBlockEntity.class).setItem(0, new ItemStack(Items.DIAMOND, 3));
+		StructureTemplate template = bendStructure(helper);
+
+		GameTestSequence sequence = helper.startSequence();
+		for (Mirror mirror : Mirror.values()) {
+			for (Rotation rotation : Rotation.values()) {
+				sequence.thenExecute(() -> placeCopy(helper, template, mirror, rotation))
+						.thenIdle(1) // past the end of the tick the copies loaded in, when they are checked
+						.thenExecute(() -> {
+							assertBendCopied(helper, mirror, rotation);
+							helper.assertTrue(level.getBlockEntity(copied(helper, CHEST, mirror,
+									rotation)) instanceof ChestBlockEntity chest
+									&& ItemStack.matches(chest.getItem(0), new ItemStack(Items.DIAMOND, 3)),
+									mirror + ", " + rotation + ": the copied chest is gone or lost its diamonds");
+							BlockPos min = helper.absolutePos(COPY_AT).offset(-7, 0, -7);
+							BlockPos max = helper.absolutePos(COPY_AT).offset(7, 0, 7);
+							command(helper, "fill %d %d %d %d %d %d air".formatted(min.getX(), min.getY(),
+									min.getZ(), max.getX(), max.getY(), max.getZ()));
+						})
+						.thenIdle(1);
+			}
+		}
+		sequence.thenExecute(() -> helper.assertValueEqual(anchorAt(level, helper.absolutePos(BEND_FROM)).segments(),
+				List.of(BEND), "the original's segments")).thenSucceed();
+	}
+
+	/**
+	 * The block entity a structure places, not the id saved with its data, decides whether its data turns: the
+	 * structure of {@link #aSegmentTurnsWithAStructurePlacedEveryWay} with its block entities' ids taken out, placed
+	 * mirrored front to back and turned half round, still copies the segment.
 	 */
 	@GameTest(structure = WIDE, maxTicks = 20)
-	public void aSegmentTurnsWithAStructurePlacedMirroredAndRotated(GameTestHelper helper) {
-		ServerLevel level = helper.getLevel();
-		BlockPos from = new BlockPos(2, 3, 2);
-		Segment bend = segment(new Vec3i(4, 0, 2), Heading.EAST, 10, Heading.SOUTH_EAST, 0);
-		lay(helper, from, bend);
-		BlockPos corner = new BlockPos(1, 3, 1);
-		StructureTemplate template = new StructureTemplate();
-		template.fillFromWorld(level, helper.absolutePos(corner), new Vec3i(7, 1, 5), false, List.of());
-		StructurePlaceSettings settings = new StructurePlaceSettings().setMirror(Mirror.LEFT_RIGHT)
-				.setRotation(Rotation.CLOCKWISE_90);
-		BlockPos at = helper.absolutePos(new BlockPos(9, 3, 8));
-		template.placeInWorld(level, at, at, settings, level.getRandom(), Block.UPDATE_CLIENTS);
-		// Where vanilla moved each anchor's cell to.
-		BlockPos copiedFrom = at.offset(StructureTemplate.transform(from.subtract(corner), Mirror.LEFT_RIGHT,
-				Rotation.CLOCKWISE_90, BlockPos.ZERO));
-		BlockPos copiedTo = at.offset(StructureTemplate.transform(from.offset(bend.offset()).subtract(corner),
-				Mirror.LEFT_RIGHT, Rotation.CLOCKWISE_90, BlockPos.ZERO));
+	public void anAnchorsDataTurnsWithAStructureWithoutItsId(GameTestHelper helper) {
+		lay(helper, BEND_FROM, BEND);
+		CompoundTag saved = bendStructure(helper).save(new CompoundTag());
+		saved.getListOrEmpty(StructureTemplate.BLOCKS_TAG).compoundStream().forEach(
+				block -> block.getCompound(StructureTemplate.BLOCK_TAG_NBT).ifPresent(data -> data.remove("id")));
+		StructureTemplate withoutIds = new StructureTemplate();
+		withoutIds.load(helper.getLevel().holderLookup(Registries.BLOCK), saved);
+		placeCopy(helper, withoutIds, Mirror.FRONT_BACK, Rotation.CLOCKWISE_180);
 
 		helper.startSequence()
 				.thenIdle(1) // past the end of the tick the copies loaded in, when they are checked
-				.thenExecute(() -> {
-					List<Segment> held = anchorAt(level, copiedFrom).segments();
-					helper.assertValueEqual(held.size(), 1, "the segments the copy of the west anchor holds");
-					Segment turned = held.getFirst();
-					helper.assertValueEqual(copiedFrom.offset(turned.offset()), copiedTo, "where its partner is");
-					helper.assertValueEqual(anchorAt(level, copiedTo).segments(), List.of(turned.reversed()),
-							"the copy of the east anchor's segments");
-					// Mirrored and turned, east becomes south and south-east stays.
-					helper.assertValueEqual(turned.from().tangent(), new AnchorTangent(Heading.SOUTH, 10),
-							"the turned segment's start");
-					helper.assertValueEqual(turned.to().tangent().heading(), Heading.SOUTH_EAST,
-							"the turned segment's end heading");
-					helper.assertValueEqual(trackBetween(level, copiedFrom, copiedTo),
-							List.of(new SegmentIndex.Held(copiedFrom, turned)), "the track between the copies");
-					helper.assertValueEqual(anchorAt(level, helper.absolutePos(from)).segments(), List.of(bend),
-							"the original's segments");
-				})
+				.thenExecute(() -> assertBendCopied(helper, Mirror.FRONT_BACK, Rotation.CLOCKWISE_180))
 				.thenSucceed();
+	}
+
+	/** {@link #BEND} and the cells around it, from {@link #BEND_CORNER}, as a structure. */
+	private static StructureTemplate bendStructure(GameTestHelper helper) {
+		StructureTemplate template = new StructureTemplate();
+		template.fillFromWorld(helper.getLevel(), helper.absolutePos(BEND_CORNER), new Vec3i(7, 1, 5), false,
+				List.of());
+		return template;
+	}
+
+	/** Places a structure of the cells from {@link #BEND_CORNER} at {@link #COPY_AT}, mirrored, then rotated. */
+	private static void placeCopy(GameTestHelper helper, StructureTemplate template, Mirror mirror,
+			Rotation rotation) {
+		ServerLevel level = helper.getLevel();
+		BlockPos at = helper.absolutePos(COPY_AT);
+		template.placeInWorld(level, at, at, new StructurePlaceSettings().setMirror(mirror).setRotation(rotation),
+				level.getRandom(), Block.UPDATE_CLIENTS);
+	}
+
+	/** Where vanilla moves a cell of the structure from {@link #BEND_CORNER} placed by {@link #placeCopy}. */
+	private static BlockPos copied(GameTestHelper helper, BlockPos pos, Mirror mirror, Rotation rotation) {
+		return helper.absolutePos(COPY_AT)
+				.offset(StructureTemplate.transform(pos.subtract(BEND_CORNER), mirror, rotation, BlockPos.ZERO));
+	}
+
+	/**
+	 * Asserts that the copies of {@link #BEND}'s anchors placed by {@link #placeCopy} hold one segment between them,
+	 * leaving and arriving along the original's headings as vanilla turns a direction, and that the track holds it.
+	 */
+	private static void assertBendCopied(GameTestHelper helper, Mirror mirror, Rotation rotation) {
+		ServerLevel level = helper.getLevel();
+		String turn = mirror + ", " + rotation + ": ";
+		BlockPos copiedFrom = copied(helper, BEND_FROM, mirror, rotation);
+		BlockPos copiedTo = copied(helper, BEND_FROM.offset(BEND.offset()), mirror, rotation);
+		List<Segment> held = anchorAt(level, copiedFrom).segments();
+		helper.assertValueEqual(held.size(), 1, turn + "the segments the copy of the west anchor holds");
+		Segment turned = held.getFirst();
+		helper.assertValueEqual(copiedFrom.offset(turned.offset()), copiedTo, turn + "where its partner is");
+		helper.assertValueEqual(anchorAt(level, copiedTo).segments(), List.of(turned.reversed()),
+				turn + "the copy of the east anchor's segments");
+		helper.assertValueEqual(turned.from().tangent(), new AnchorTangent(turnedBy(Heading.EAST, mirror, rotation),
+				BEND.from().tangent().pitch()), turn + "the copy's start");
+		helper.assertValueEqual(turned.to().tangent(),
+				new AnchorTangent(turnedBy(Heading.SOUTH_EAST, mirror, rotation), BEND.to().tangent().pitch()),
+				turn + "the copy's end");
+		// The track gives a segment as its anchor first in BlockPos order stores it.
+		SegmentIndex.Held indexed = copiedFrom.compareTo(copiedTo) < 0
+				? new SegmentIndex.Held(copiedFrom, turned)
+				: new SegmentIndex.Held(copiedTo, turned.reversed());
+		helper.assertValueEqual(trackBetween(level, copiedFrom, copiedTo), List.of(indexed),
+				turn + "the track between the copies");
+	}
+
+	/** A heading as vanilla turns a direction, mirrored, then rotated: each of its steps along x and z turned. */
+	private static Heading turnedBy(Heading heading, Mirror mirror, Rotation rotation) {
+		Vec3i east = rotation.rotate(mirror.mirror(Direction.EAST)).getUnitVec3i();
+		Vec3i south = rotation.rotate(mirror.mirror(Direction.SOUTH)).getUnitVec3i();
+		Vec3i step = east.multiply(heading.step().getX()).offset(south.multiply(heading.step().getZ()));
+		for (Heading turned : Heading.values()) {
+			if (turned.step().equals(step)) {
+				return turned;
+			}
+		}
+		throw new IllegalStateException("no heading along " + step);
 	}
 
 	/**
