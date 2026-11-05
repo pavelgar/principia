@@ -13,8 +13,6 @@ import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityLevelChangeEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerBlockEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityDataRegistry;
 
 /**
@@ -60,31 +58,14 @@ public final class SkyLineHooks {
 		});
 		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL
 				.register((player, origin, destination) -> select(player, null));
-		PayloadTypeRegistry.serverboundPlay().register(UseOnRailPayload.TYPE, UseOnRailPayload.STREAM_CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(UseOnRailPayload.TYPE, (payload, context) -> {
-			if (ClientActions.accept(context.player())) {
-				SkyHook.useOnRail(context.player(), payload.hand(), payload.target());
-			}
-		});
-		PayloadTypeRegistry.serverboundPlay().register(LayTrackPayload.TYPE, LayTrackPayload.STREAM_CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(LayTrackPayload.TYPE, (payload, context) -> {
-			if (ClientActions.accept(context.player())) {
-				Placement.lay(context.player(), payload.hand(), payload.hit(), payload.chosen());
-			}
-		});
-		PayloadTypeRegistry.serverboundPlay().register(StartMiningRailPayload.TYPE,
-				StartMiningRailPayload.STREAM_CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(StartMiningRailPayload.TYPE, (payload, context) -> {
-			if (ClientActions.accept(context.player())) {
-				RailBreaking.startMining(context.player(), payload.target());
-			}
-		});
-		PayloadTypeRegistry.serverboundPlay().register(BreakRailPayload.TYPE, BreakRailPayload.STREAM_CODEC);
-		ServerPlayNetworking.registerGlobalReceiver(BreakRailPayload.TYPE, (payload, context) -> {
-			if (ClientActions.accept(context.player())) {
-				RailBreaking.breakRail(context.player(), payload.target());
-			}
-		});
+		ClientActions.register(UseOnRailPayload.TYPE, UseOnRailPayload.STREAM_CODEC,
+				(player, payload) -> SkyHook.useOnRail(player, payload.hand(), payload.target()));
+		ClientActions.register(LayTrackPayload.TYPE, LayTrackPayload.STREAM_CODEC,
+				(player, payload) -> Placement.lay(player, payload.hand(), payload.hit(), payload.chosen()));
+		ClientActions.register(StartMiningRailPayload.TYPE, StartMiningRailPayload.STREAM_CODEC,
+				(player, payload) -> RailBreaking.startMining(player, payload.target()));
+		ClientActions.register(BreakRailPayload.TYPE, BreakRailPayload.STREAM_CODEC,
+				(player, payload) -> RailBreaking.breakRail(player, payload.target()));
 	}
 
 	static Track track(Level level) {
