@@ -3,12 +3,16 @@ package io.github.pavelgar.principia.skyline;
 import java.util.Set;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.netty.buffer.ByteBuf;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -25,7 +29,7 @@ import net.minecraft.world.phys.Vec3;
  * @param to how the segment leaves the partner anchor
  */
 public record Segment(Vec3i offset, End from, End to) {
-	/** For syncing the anchors to clients. */
+	/** A segment over the network, as tests check it encodes; anchors reach clients as their saved data. */
 	public static final StreamCodec<ByteBuf, Segment> STREAM_CODEC = StreamCodec.composite(Vec3i.STREAM_CODEC,
 			Segment::offset, End.STREAM_CODEC, Segment::from, End.STREAM_CODEC, Segment::to, Segment::new);
 
@@ -53,16 +57,51 @@ public record Segment(Vec3i offset, End from, End to) {
 	/**
 	 * What an anchor stores of one of its segments, the end at its partner anchor, for its block entity to save.
 	 *
+	 * <p>Decoding refuses an offset of zero or of more than {@link #MAX_SAVED_OFFSET} along any axis. Laying never makes
+	 * one longer than {@link SegmentLimit#MAX_LENGTH}, but saved data can hold anything (an edit with {@code /data}, a
+	 * structure file, a map), and loading a segment indexes every chunk section in its bounding box: a partner 30 million
+	 * blocks off along two axes is trillions of them, which hangs the server and every client the anchor is sent to.
+	 *
 	 * @param offset the partner anchor's position minus this anchor's
 	 * @param tangent the partner anchor's tangent
 	 * @param side the side of the partner anchor the segment is on
 	 */
 	public record Partner(Vec3i offset, AnchorTangent tangent, AnchorSide side) {
-		public static final Codec<Partner> CODEC = RecordCodecBuilder.create(instance -> instance
-				.group(Vec3i.CODEC.fieldOf("offset").forGetter(Partner::offset),
-						AnchorTangent.CODEC.fieldOf("tangent").forGetter(Partner::tangent),
-						AnchorSide.CODEC.fieldOf("side").forGetter(Partner::side))
-				.apply(instance, Partner::new));
+		/**
+		 * The furthest a saved partner can be along each axis: far past what laying allows, as tests and commands need
+		 * for anchors whose chunks load apart, and near enough that indexing it stays cheap.
+		 */
+		public static final int MAX_SAVED_OFFSET = 512;
+		public static final Codec<Partner> CODEC = RecordCodecBuilder
+				.<Partner>create(instance -> instance
+						.group(Vec3i.CODEC.fieldOf("offset").forGetter(Partner::offset),
+								AnchorTangent.CODEC.fieldOf("tangent").forGetter(Partner::tangent),
+								AnchorSide.CODEC.fieldOf("side").forGetter(Partner::side))
+						.apply(instance, Partner::new))
+				.validate(Partner::checkOffset);
+
+		private static DataResult<Partner> checkOffset(Partner partner) {
+			Vec3i offset = partner.offset();
+			if (offset.equals(Vec3i.ZERO)) {
+				return DataResult.error(() -> "a segment's partner at its own anchor");
+			}
+			int furthest = Math.max(Math.abs(offset.getX()),
+					Math.max(Math.abs(offset.getY()), Math.abs(offset.getZ())));
+			return furthest <= MAX_SAVED_OFFSET
+					? DataResult.success(partner)
+					: DataResult.error(() -> "a segment's partner " + offset.toShortString() + " away, more than "
+							+ MAX_SAVED_OFFSET + " along an axis");
+		}
+
+		/**
+		 * This partner as a structure placed mirrored, then rotated, moves it: its offset as the structure moves the
+		 * cells, its heading with them. The pitch and the side stay.
+		 */
+		public Partner transformed(Mirror mirror, Rotation rotation) {
+			return new Partner(
+					StructureTemplate.transform(BlockPos.ZERO.offset(offset), mirror, rotation, BlockPos.ZERO),
+					new AnchorTangent(tangent.heading().transformed(mirror, rotation), tangent.pitch()), side);
+		}
 	}
 
 	/** A segment from what an anchor stores of it and the anchor's own end of it. */

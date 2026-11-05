@@ -17,6 +17,8 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.ScheduledTickAccess;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.SimpleWaterloggedBlock;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
@@ -71,6 +73,17 @@ public final class BeamEndBlock extends Block implements SimpleWaterloggedBlock 
 		BlockPos anchor = pos.offset(end.getValue(ANCHOR).step());
 		BlockState there = level.getBlockState(anchor);
 		return there.is(SkyLine.ANCHOR) && AnchorBlock.reachesInto(there, anchor, pos) ? anchor : null;
+	}
+
+	/** A structure placed rotated or mirrored turns the end's heading as it moves its cells, so it still points at its anchor. */
+	@Override
+	protected BlockState rotate(BlockState state, Rotation rotation) {
+		return state.setValue(ANCHOR, state.getValue(ANCHOR).transformed(Mirror.NONE, rotation));
+	}
+
+	@Override
+	protected BlockState mirror(BlockState state, Mirror mirror) {
+		return state.setValue(ANCHOR, state.getValue(ANCHOR).transformed(mirror, Rotation.NONE));
 	}
 
 	@Override

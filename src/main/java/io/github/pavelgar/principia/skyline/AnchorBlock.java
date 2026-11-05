@@ -19,6 +19,8 @@ import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.ScheduledTickAccess;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.SimpleWaterloggedBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour;
@@ -51,6 +53,17 @@ public final class AnchorBlock extends BaseEntityBlock implements SimpleWaterlog
 		super(properties);
 		registerDefaultState(stateDefinition.any().setValue(HEADING, Heading.SOUTH).setValue(WATERLOGGED, false));
 		outlines = getShapeForEachState(state -> CrossBeam.outline(state.getValue(HEADING)), WATERLOGGED);
+	}
+
+	/** A structure placed rotated or mirrored turns the anchor's heading as it moves its cells; its block entity's segments turn with it ({@link AnchorBlockEntity#transformedForStructure}). */
+	@Override
+	protected BlockState rotate(BlockState state, Rotation rotation) {
+		return state.setValue(HEADING, state.getValue(HEADING).transformed(Mirror.NONE, rotation));
+	}
+
+	@Override
+	protected BlockState mirror(BlockState state, Mirror mirror) {
+		return state.setValue(HEADING, state.getValue(HEADING).transformed(mirror, Rotation.NONE));
 	}
 
 	@Override

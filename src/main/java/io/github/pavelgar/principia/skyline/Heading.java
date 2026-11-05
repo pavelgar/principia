@@ -6,11 +6,15 @@ import java.util.function.IntFunction;
 import com.mojang.serialization.Codec;
 import io.netty.buffer.ByteBuf;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.util.ByIdMap;
 import net.minecraft.util.StringRepresentable;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
 /**
  * One of the eight horizontal headings a Sky-Line anchor can face, 45° apart. They are in the order of an entity's
@@ -75,6 +79,20 @@ public enum Heading implements StringRepresentable {
 
 	public Heading opposite() {
 		return BY_ID.apply(id + 4);
+	}
+
+	/**
+	 * This heading as a structure placed mirrored, then rotated, turns it: as it moves the cell one {@link #step} this
+	 * way, which keeps a heading and the offsets along it together.
+	 */
+	public Heading transformed(Mirror mirror, Rotation rotation) {
+		BlockPos moved = StructureTemplate.transform(BlockPos.ZERO.offset(step()), mirror, rotation, BlockPos.ZERO);
+		for (Heading heading : values()) {
+			if (heading.step().equals(moved)) {
+				return heading;
+			}
+		}
+		throw new IllegalStateException(this + " has no heading " + mirror + " and " + rotation);
 	}
 
 	/** How far this heading is from another, in 45° steps: 0 to 4. */

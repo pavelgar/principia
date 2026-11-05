@@ -6,16 +6,23 @@ import java.util.List;
 import java.util.Set;
 
 import com.mojang.serialization.Codec;
+import io.github.pavelgar.principia.Principia;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.SectionPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -31,6 +38,11 @@ import net.minecraft.world.level.storage.ValueOutput;
  * changes only while it holds no segment.
  */
 public final class AnchorBlockEntity extends BlockEntity {
+	/**
+	 * The version of what {@link #saveAdditional} writes, saved with it. Data without one is version 1. A change to
+	 * the format raises it, and {@link #loadAdditional} reads every older version.
+	 */
+	static final int SAVE_VERSION = 1;
 	private static final Codec<Float> PITCH_CODEC = Codec.floatRange(-AnchorTangent.MAX_PITCH, AnchorTangent.MAX_PITCH);
 
 	private float pitch;
@@ -309,19 +321,57 @@ public final class AnchorBlockEntity extends BlockEntity {
 	@Override
 	protected void saveAdditional(ValueOutput output) {
 		super.saveAdditional(output);
+		output.putInt("version", SAVE_VERSION);
 		output.store("pitch", PITCH_CODEC, pitch);
 		output.storeNullable("front", Segment.Partner.CODEC, front);
 		output.storeNullable("back", Segment.Partner.CODEC, back);
 	}
 
+	/**
+	 * Reads what {@link #saveAdditional} wrote, in any version up to {@link #SAVE_VERSION}. A segment that doesn't
+	 * decode is reported by vanilla, with the anchor's position, and dropped; its partner then drops its copy when the
+	 * two are checked, as for any segment only one anchor holds.
+	 */
 	@Override
 	protected void loadAdditional(ValueInput input) {
 		super.loadAdditional(input);
+		int version = input.getIntOr("version", 1);
+		if (version > SAVE_VERSION) {
+			Principia.LOGGER.warn("The Sky-Line anchor at {} was saved by a newer Principia (save version {}, this one "
+					+ "reads up to {}): its segments may not load", worldPosition.toShortString(), version,
+					SAVE_VERSION);
+		}
 		pitch = input.read("pitch", PITCH_CODEC).orElse(0f);
 		front = input.read("front", Segment.Partner.CODEC).orElse(null);
 		back = input.read("back", Segment.Partner.CODEC).orElse(null);
 		// A client gets the anchor's segments after its chunk loaded it, and again as they change.
 		updateTrack();
+	}
+
+	/**
+	 * An anchor's saved data as a structure placed mirrored, then rotated, moves the anchor: its partners' offsets and
+	 * headings turn with the blocks, as {@link AnchorBlock#rotate} and {@link AnchorBlock#mirror} turn its own heading.
+	 * Vanilla loads a block entity's data from a structure unchanged, so {@code StructureTemplateMixin} passes every
+	 * block entity's saved data, with its id, through this first. Others' data, and data that doesn't decode, is left as
+	 * it is, for loading to report.
+	 */
+	public static CompoundTag transformedForStructure(CompoundTag saved, Mirror mirror, Rotation rotation) {
+		Identifier anchor = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(SkyLine.ANCHOR_ENTITY);
+		if ((mirror == Mirror.NONE && rotation == Rotation.NONE)
+				|| anchor == null || !saved.getString("id").map(anchor.toString()::equals).orElse(false)) {
+			return saved;
+		}
+		CompoundTag moved = saved.copy();
+		for (String side : List.of("front", "back")) {
+			Tag partner = moved.get(side);
+			if (partner != null) {
+				Segment.Partner.CODEC.parse(NbtOps.INSTANCE, partner).result()
+						.flatMap(decoded -> Segment.Partner.CODEC
+								.encodeStart(NbtOps.INSTANCE, decoded.transformed(mirror, rotation)).result())
+						.ifPresent(encoded -> moved.put(side, encoded));
+			}
+		}
+		return moved;
 	}
 
 	@Override

@@ -55,6 +55,7 @@ Each kind of change also needs evidence: a test that fails without it.
 | What a client sends, or what players share | A client game test against a dedicated server (`SkyHookDedicatedServerClientGameTest`) |
 | What players see | A client game test asserting the render state, with its screenshots looked at and described in the PR |
 | Blocks, items, recipes, assets | `runDatagen` output committed, and `RegistrationGameTest` passing |
+| What is saved (block entities, entities, attachments) | A game test loading the previous format, and one placing it in a structure turned and mirrored |
 
 A failing test is evidence too: fix the code, or report the test as wrong. A test, saved fuzz input or screenshot template changes only together with the behaviour it pins, and the PR says so.
 
@@ -75,6 +76,7 @@ PR titles, and the commit subjects that become them, are [Conventional Commits](
 - English text is declared in Java next to what it names: a block's or item's name is an argument of its `Content` registration, other text an `English.add` constant. `en_us.json` is generated from them; other languages are hand-written files in `src/main/resources`.
 - JUnit tests call `SharedConstants.tryDetectVersion(); Bootstrap.bootStrap();` before touching registries, and run without a game or a window.
 - Every serverbound payload handler starts with `ClientActions.accept(player)` (alive, loaded, no pending teleport), then the feature's own checks: reach, line of sight, protection.
+- Saved data is whatever a world, a structure or `/data` hands back: it carries a save version (`AnchorBlockEntity.SAVE_VERSION`), its codecs bound every size and offset they decode, and it turns with structures. A block with a direction overrides `rotate` and `mirror`; block-entity data holding offsets or directions turns in `StructureTemplateMixin`, as the anchor's does.
 - Writing or running a client game test, or recording a video of one: read `.agents/skills/mc-api-lookup/client-gametests.md` first.
 
 Design rules for code not yet written:
