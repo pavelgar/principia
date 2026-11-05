@@ -2,8 +2,8 @@
 
 .gradle/
 build/
-out/
-classes/
+/out/
+/classes/
 
 # eclipse
 
@@ -20,7 +20,7 @@ classes/
 
 .settings/
 .vscode/
-bin/
+/bin/
 .classpath
 .project
 .factorypath
@@ -29,9 +29,9 @@ bin/
 
 *.DS_Store
 
-# fabric
+# fabric (runClient/runServer; the game-test runs are under build/run)
 
-run/
+/run/
 
 # java
 
@@ -41,8 +41,8 @@ replay_*.log
 *.jfr
 
 # fabric runtime artefacts written to the project root (datagen, loader cache)
-.fabric/
-logs/
+/.fabric/
+/logs/
 
 # datagen cache (outputs in src/main/generated are committed, the cache is not)
 src/main/generated/.cache/
@@ -50,8 +50,9 @@ src/main/generated/.cache/
 # kotlin
 .kotlin/
 
-# personal agent settings/instructions (shared ones are committed). Note: a CLAUDE.local.md stops Claude Code
-# from reading AGENTS.md, so prefer .claude/settings.local.json / AGENTS.override.md for personal tweaks.
+# personal agent settings/instructions (shared ones are committed): .claude/settings.local.json for Claude Code,
+# AGENTS.override.md for Codex only (Codex reads it in place of AGENTS.md, so start it as a copy; Claude Code never
+# reads it). Not CLAUDE.local.md: it makes Claude Code skip AGENTS.md, and is ignored only so one isn't committed.
 .claude/settings.local.json
 CLAUDE.local.md
 AGENTS.override.md
