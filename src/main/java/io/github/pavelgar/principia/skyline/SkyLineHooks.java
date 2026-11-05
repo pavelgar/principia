@@ -4,6 +4,7 @@ import io.github.pavelgar.principia.Principia;
 import io.github.pavelgar.principia.content.ClientActions;
 import org.jspecify.annotations.Nullable;
 
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
@@ -16,11 +17,11 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityDataRegistry;
 
 /**
- * Where the Sky-Line meets Fabric API, with the client's {@code SkyLineClientHooks}: each level's {@link Track} and each
- * player's selected anchor ({@link TrackStart}) as data attachments, the events that tell anchors they loaded or
- * unloaded, that a server tick ended and that a player changed dimension, the payloads a client sends of the rail it
- * uses an item on, starts mining or breaks and of the block it lays track to, and the hook's synced rail point. A port to another
- * loader replaces these two classes.
+ * Where the Sky-Line meets Fabric API, with the client's {@code SkyLineClientHooks}: each level's {@link Track}, each
+ * player's selected anchor ({@link TrackStart}) and the rail they mine as data attachments, the events that tell
+ * anchors they loaded or unloaded, that a server tick ended and that a player changed dimension, the payloads a client
+ * sends of the rail it uses an item on, starts mining or breaks and of the block it lays track to, and the hook's
+ * synced rail point. A port to another loader replaces these two classes and {@code ClientActions#register}.
  */
 public final class SkyLineHooks {
 	private static final AttachmentType<Track> TRACK = AttachmentRegistry.createDefaulted(Principia.id("track"),
@@ -30,7 +31,10 @@ public final class SkyLineHooks {
 			builder -> builder.persistent(TrackStart.CODEC).syncWith(TrackStart.STREAM_CODEC,
 					AttachmentSyncPredicate.targetOnly()));
 
-	/** The rail a player is mining, on the server only: neither saved nor sent, as vanilla keeps a block's mining. */
+	/**
+	 * The rail a player is mining, on the server only: neither saved nor sent, as vanilla keeps a block's mining, and
+	 * gone when they change dimension.
+	 */
 	private static final AttachmentType<RailBreaking.Mining> MINING = AttachmentRegistry
 			.create(Principia.id("mining_rail"));
 
@@ -54,10 +58,15 @@ public final class SkyLineHooks {
 			if (track != null) {
 				track.tickEnded();
 			}
-			level.players().forEach(Placement::keepCurrent);
+			for (ServerPlayer player : level.players()) {
+				Placement.keepCurrent(player);
+				RailBreaking.tick(player);
+			}
 		});
-		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL
-				.register((player, origin, destination) -> select(player, null));
+		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL.register((player, origin, destination) -> {
+			select(player, null);
+			mine(player, null);
+		});
 		ClientActions.register(UseOnRailPayload.TYPE, UseOnRailPayload.STREAM_CODEC,
 				(player, payload) -> SkyHook.useOnRail(player, payload.hand(), payload.target()));
 		ClientActions.register(LayTrackPayload.TYPE, LayTrackPayload.STREAM_CODEC,

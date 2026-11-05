@@ -25,11 +25,13 @@ import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
  * Claims as a claim mod makes them, for tests: cells a player is kept out of, by one of the two conventions claim mods
  * share. {@link #byEvent} refuses breaks through Fabric API's {@link PlayerBlockBreakEvents#BEFORE}; {@link
  * #byCommonProtection} refuses placing and breaking through the common protection API. Each test keeps out only its
- * own players, so the claims never reach another test; {@link #lift} ends them.
+ * own players, so the claims never reach another test; {@link #lift} ends them. The breaks the events report are noted
+ * per player, for every player once a test has made a claim or {@link #watch}ed.
  */
 final class TestClaims {
 	private static final Map<UUID, Set<BlockPos>> BY_EVENT = new ConcurrentHashMap<>();
 	private static final Map<UUID, Set<BlockPos>> BY_COMMON_PROTECTION = new ConcurrentHashMap<>();
+	private static final Map<UUID, List<BlockPos>> ASKED = new ConcurrentHashMap<>();
 	private static final Map<UUID, List<BlockPos>> CANCELED = new ConcurrentHashMap<>();
 	private static boolean registered;
 
@@ -49,16 +51,27 @@ final class TestClaims {
 				.addAll(List.of(cells));
 	}
 
+	/** Starts noting the breaks Fabric's events report for players, with no claim to keep them out. */
+	static void watch() {
+		register();
+	}
+
+	/** The cells whose break Fabric's {@link PlayerBlockBreakEvents#BEFORE} asked about for a player, in order. */
+	static List<BlockPos> asked(Player player) {
+		return List.copyOf(ASKED.getOrDefault(player.getUUID(), List.of()));
+	}
+
 	/** The cells whose break Fabric's {@link PlayerBlockBreakEvents#CANCELED} reported refused to a player, in order. */
 	static List<BlockPos> canceled(Player player) {
 		return List.copyOf(CANCELED.getOrDefault(player.getUUID(), List.of()));
 	}
 
-	/** Lets the players go anywhere again, and forgets their canceled breaks. */
+	/** Lets the players go anywhere again, and forgets their breaks. */
 	static void lift(Player... players) {
 		for (Player player : players) {
 			BY_EVENT.remove(player.getUUID());
 			BY_COMMON_PROTECTION.remove(player.getUUID());
+			ASKED.remove(player.getUUID());
 			CANCELED.remove(player.getUUID());
 		}
 	}
@@ -68,8 +81,10 @@ final class TestClaims {
 			return;
 		}
 		registered = true;
-		PlayerBlockBreakEvents.BEFORE
-				.register((level, player, pos, state, blockEntity) -> !keptOut(BY_EVENT, player.getUUID(), pos));
+		PlayerBlockBreakEvents.BEFORE.register((level, player, pos, state, blockEntity) -> {
+			ASKED.computeIfAbsent(player.getUUID(), ignored -> new ArrayList<>()).add(pos.immutable());
+			return !keptOut(BY_EVENT, player.getUUID(), pos);
+		});
 		PlayerBlockBreakEvents.CANCELED.register((level, player, pos, state, blockEntity) -> CANCELED
 				.computeIfAbsent(player.getUUID(), ignored -> new ArrayList<>()).add(pos.immutable()));
 		CommonProtection.register(Principia.id("test_claims"), new ProtectionProvider() {

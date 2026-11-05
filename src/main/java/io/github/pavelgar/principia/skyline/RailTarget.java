@@ -9,14 +9,11 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * A rail point a client sends of the rail its player aims at, as the server checks it before acting on it, for every
- * use of a rail (attaching a Sky-Hook, jumping to a rail, breaking a rail): the segment is still in the server's track,
- * the player isn't a spectator, the distance along the rail is a number, and the point is within reach of their eyes
- * with no block between. It doesn't check where they look, as vanilla doesn't for blocks.
- *
- * <p>Vanilla doesn't check that a block or entity a player uses is in sight either, but using a rail moves the
- * player's body to it, up to {@link SkyHook#JUMP_REACH} away: without the check, a modified client could hang from a
- * rail behind a wall and let go on its far side.
+ * A rail point a client sends of the rail its player aims at, as the server checks it before any use of a rail
+ * (attaching a Sky-Hook, jumping to a rail, breaking a rail): the segment is still in the server's track, the player
+ * isn't a spectator, the distance is a number, and the point is within reach of their eyes with no block between.
+ * Vanilla checks no line of sight for blocks, but using a rail can move the player to it, through a wall without this.
+ * Where they look isn't checked, as vanilla doesn't.
  *
  * @param segment the segment as the anchor the point names stores it
  * @param point the point of the rail's line, worked out from the rail point on the server's own track
@@ -25,9 +22,8 @@ public record RailTarget(Segment segment, Vec3 point) {
 	/** How much further than its reach the server lets a target be, for lag: vanilla's buffer for blocks. */
 	private static final double REACH_BUFFER = 1;
 	/**
-	 * How far short of the rail point a block may stop the line from the eyes. The client aims along its look, which
-	 * passes up to {@link RailAim#HELD_RADIUS} from the point, and refuses a rail behind a block's outline on that line;
-	 * the server's line goes to the point itself, so it allows twice that.
+	 * How far short of the rail point a block may stop the line from the eyes: twice the client's aim radius, as the
+	 * client's look passes up to {@link RailAim#HELD_RADIUS} beside the point.
 	 */
 	private static final double SIGHT_SLACK = 2 * RailAim.HELD_RADIUS;
 
@@ -48,9 +44,8 @@ public record RailTarget(Segment segment, Vec3 point) {
 		if (point.distanceTo(eye) > reach + REACH_BUFFER) {
 			return null;
 		}
-		// From where the eyes are or were a tick ago: the client aimed between the two, a moving player's eyes passing
-		// a corner. The eyes a tick ago only from within reach, so that the line can't cross chunks the level would
-		// have to load.
+		// From the eyes now or a tick ago, as a moving client aims between the two; a tick ago only within reach, so
+		// the line can't cross chunks the level would have to load.
 		Vec3 before = player.getEyePosition(0);
 		if (!inSight(player, eye, point)
 				&& (point.distanceTo(before) > reach + REACH_BUFFER || !inSight(player, before, point))) {
