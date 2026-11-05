@@ -84,7 +84,8 @@ class StructureTransformTest {
 
 	/**
 	 * Two anchors anywhere, with the partner's offset and heading saved at one of them: after any mirror and rotation
-	 * about any pivot, the turned partner is where vanilla moves the other anchor, heading as its moved block does.
+	 * about any pivot, the turned partner is where vanilla moves the other anchor, heading at the cell vanilla moves the
+	 * one it headed at to.
 	 */
 	@Test
 	void aPartnerTurnsToWhereItsAnchorMoves() {
@@ -105,8 +106,12 @@ class StructureTransformTest {
 
 			Segment.Partner turned = partner.transformed(mirror, rotation);
 			BlockPos movedAnchor = moved(anchor, mirror, rotation, pivot);
-			assertEquals(moved(anchor.offset(offset), mirror, rotation, pivot), movedAnchor.offset(turned.offset()));
-			assertEquals(heading.transformed(mirror, rotation), turned.tangent().heading());
+			BlockPos movedPartner = moved(anchor.offset(offset), mirror, rotation, pivot);
+			assertEquals(movedPartner, movedAnchor.offset(turned.offset()));
+			// The partner's heading points from its cell to the cell one step on, wherever vanilla moved the two.
+			Vec3i movedStep = moved(anchor.offset(offset).offset(heading.step()), mirror, rotation, pivot)
+					.subtract(movedPartner);
+			assertEquals(movedStep, turned.tangent().heading().step());
 			assertEquals(partner.tangent().pitch(), turned.tangent().pitch());
 			assertEquals(partner.side(), turned.side());
 		}
@@ -147,17 +152,21 @@ class StructureTransformTest {
 	}
 
 	/**
-	 * Decoding takes a partner up to {@link Segment.Partner#MAX_SAVED_OFFSET} along every axis, either way, and
-	 * refuses one further along any, or at the anchor itself, which loading would otherwise index section by section.
+	 * Decoding takes a partner up to {@link Segment.Partner#MAX_SAVED_OFFSET} along any one axis and up to
+	 * {@link Segment.Partner#MAX_SAVED_SPREAD} along the other two, either way, and refuses one further, or at the
+	 * anchor itself, which loading would otherwise index section by section.
 	 */
 	@Test
 	void decodingRefusesAPartnerTooFarOrAtItsOwnAnchor() {
 		int max = Segment.Partner.MAX_SAVED_OFFSET;
-		for (int[] fine : new int[][]{{max, 0, 0}, {-max, max, -max}, {1, 0, 0}, {0, -1, 0}}) {
+		int spread = Segment.Partner.MAX_SAVED_SPREAD;
+		for (int[] fine : new int[][]{{max, 0, 0}, {-spread, max, spread}, {spread, -spread, -max}, {1, 0, 0},
+				{0, -1, 0}}) {
 			assertTrue(Segment.Partner.CODEC.parse(NbtOps.INSTANCE, savedPartner(fine)).isSuccess(),
 					Arrays.toString(fine));
 		}
-		for (int[] refused : new int[][]{{max + 1, 0, 0}, {0, -max - 1, 0}, {0, 0, 30_000_000}, {0, 0, 0}}) {
+		for (int[] refused : new int[][]{{max + 1, 0, 0}, {0, -max - 1, 0}, {0, 0, 30_000_000}, {0, 0, 0},
+				{max, spread + 1, 0}, {-spread - 1, 0, spread + 1}, {-max, max, -max}}) {
 			assertTrue(Segment.Partner.CODEC.parse(NbtOps.INSTANCE, savedPartner(refused)).isError(),
 					Arrays.toString(refused));
 		}

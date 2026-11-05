@@ -1,5 +1,6 @@
 package io.github.pavelgar.principia.skyline;
 
+import java.util.Arrays;
 import java.util.Set;
 
 import com.mojang.serialization.Codec;
@@ -57,10 +58,9 @@ public record Segment(Vec3i offset, End from, End to) {
 	/**
 	 * What an anchor stores of one of its segments, the end at its partner anchor, for its block entity to save.
 	 *
-	 * <p>Decoding refuses an offset of zero or of more than {@link #MAX_SAVED_OFFSET} along any axis. Laying never makes
-	 * one longer than {@link SegmentLimit#MAX_LENGTH}, but saved data can hold anything (an edit with {@code /data}, a
-	 * structure file, a map), and loading a segment indexes every chunk section in its bounding box: a partner 30 million
-	 * blocks off along two axes is trillions of them, which hangs the server and every client the anchor is sent to.
+	 * <p>Decoding refuses an offset of zero, of more than {@link #MAX_SAVED_OFFSET} along an axis, or of more than
+	 * {@link #MAX_SAVED_SPREAD} along two: saved data can hold anything ({@code /data}, a structure file), and loading a
+	 * segment indexes every chunk section in its bounding box. That box is then some 34 × 6 × 6 sections at most.
 	 *
 	 * @param offset the partner anchor's position minus this anchor's
 	 * @param tangent the partner anchor's tangent
@@ -68,10 +68,12 @@ public record Segment(Vec3i offset, End from, End to) {
 	 */
 	public record Partner(Vec3i offset, AnchorTangent tangent, AnchorSide side) {
 		/**
-		 * The furthest a saved partner can be along each axis: far past what laying allows, as tests and commands need
-		 * for anchors whose chunks load apart, and near enough that indexing it stays cheap.
+		 * The furthest a saved partner can be along one axis: far past what laying allows, for tests that need anchors
+		 * whose chunks unload apart (14 chunks or more from a forced one).
 		 */
 		public static final int MAX_SAVED_OFFSET = 512;
+		/** The furthest a saved partner can be along the other two axes: twice {@link SegmentLimit#MAX_LENGTH}. */
+		public static final int MAX_SAVED_SPREAD = 64;
 		public static final Codec<Partner> CODEC = RecordCodecBuilder
 				.<Partner>create(instance -> instance
 						.group(Vec3i.CODEC.fieldOf("offset").forGetter(Partner::offset),
@@ -85,12 +87,12 @@ public record Segment(Vec3i offset, End from, End to) {
 			if (offset.equals(Vec3i.ZERO)) {
 				return DataResult.error(() -> "a segment's partner at its own anchor");
 			}
-			int furthest = Math.max(Math.abs(offset.getX()),
-					Math.max(Math.abs(offset.getY()), Math.abs(offset.getZ())));
-			return furthest <= MAX_SAVED_OFFSET
+			int[] along = {Math.abs(offset.getX()), Math.abs(offset.getY()), Math.abs(offset.getZ())};
+			Arrays.sort(along);
+			return along[2] <= MAX_SAVED_OFFSET && along[1] <= MAX_SAVED_SPREAD
 					? DataResult.success(partner)
 					: DataResult.error(() -> "a segment's partner " + offset.toShortString() + " away, more than "
-							+ MAX_SAVED_OFFSET + " along an axis");
+							+ MAX_SAVED_OFFSET + " along an axis or " + MAX_SAVED_SPREAD + " along two");
 		}
 
 		/**

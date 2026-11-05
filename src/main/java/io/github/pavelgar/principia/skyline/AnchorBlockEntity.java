@@ -7,17 +7,16 @@ import java.util.Set;
 
 import com.mojang.serialization.Codec;
 import io.github.pavelgar.principia.Principia;
+import io.github.pavelgar.principia.content.TurnsWithStructures;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.SectionPos;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -37,7 +36,7 @@ import net.minecraft.world.level.storage.ValueOutput;
  * ({@link Segment.Partner}): its own end is its tangent and the side it holds the segment on. Its pitch therefore
  * changes only while it holds no segment.
  */
-public final class AnchorBlockEntity extends BlockEntity {
+public final class AnchorBlockEntity extends BlockEntity implements TurnsWithStructures {
 	/**
 	 * The version of what {@link #saveAdditional} writes, saved with it. Data without one is version 1. A change to
 	 * the format raises it, and {@link #loadAdditional} reads every older version.
@@ -348,30 +347,18 @@ public final class AnchorBlockEntity extends BlockEntity {
 		updateTrack();
 	}
 
-	/**
-	 * An anchor's saved data as a structure placed mirrored, then rotated, moves the anchor: its partners' offsets and
-	 * headings turn with the blocks, as {@link AnchorBlock#rotate} and {@link AnchorBlock#mirror} turn its own heading.
-	 * Vanilla loads a block entity's data from a structure unchanged, so {@code StructureTemplateMixin} passes every
-	 * block entity's saved data, with its id, through this first. Others' data, and data that doesn't decode, is left as
-	 * it is, for loading to report.
-	 */
-	public static CompoundTag transformedForStructure(CompoundTag saved, Mirror mirror, Rotation rotation) {
-		Identifier anchor = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(SkyLine.ANCHOR_ENTITY);
-		if ((mirror == Mirror.NONE && rotation == Rotation.NONE)
-				|| anchor == null || !saved.getString("id").map(anchor.toString()::equals).orElse(false)) {
-			return saved;
-		}
-		CompoundTag moved = saved.copy();
+	/** The partners turn with the structure, as {@link AnchorBlock#rotate} and {@link AnchorBlock#mirror} turn the anchor. */
+	@Override
+	public void turnSavedData(CompoundTag saved, Mirror mirror, Rotation rotation) {
 		for (String side : List.of("front", "back")) {
-			Tag partner = moved.get(side);
+			Tag partner = saved.get(side);
 			if (partner != null) {
 				Segment.Partner.CODEC.parse(NbtOps.INSTANCE, partner).result()
 						.flatMap(decoded -> Segment.Partner.CODEC
 								.encodeStart(NbtOps.INSTANCE, decoded.transformed(mirror, rotation)).result())
-						.ifPresent(encoded -> moved.put(side, encoded));
+						.ifPresent(encoded -> saved.put(side, encoded));
 			}
 		}
-		return moved;
 	}
 
 	@Override
