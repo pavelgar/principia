@@ -1,17 +1,23 @@
 # Publishes a release when a tag like v0.1.0+26.3 (v<mod_version>+<minecraft version>) is pushed.
 # Tags carry the Minecraft version because each <mc_version>/dev branch releases separately.
-# The tag must match gradle.properties / libs.versions.toml, its commit must be on the <mc_version>/dev branch, and
-# CHANGELOG.md must have a "## [0.1.0]" section, and the build and the client game tests must pass, before anything
-# is published.
-# Required repository secrets (only for platforms configured in gradle.properties):
-#   MODRINTH_TOKEN, CURSEFORGE_TOKEN. GITHUB_TOKEN is provided automatically.
+#
+# Two jobs. `verify` runs the build with read-only access and no secrets: the tag must match gradle.properties /
+# libs.versions.toml, its commit must be on the <mc_version>/dev branch, CHANGELOG.md must have a "## [0.1.0]" section
+# (the publishMods dry run fails without one), and the build and the client game tests must pass. Only then does
+# `publish` run, in the `release` environment, which alone holds the platform tokens and write access.
+#
+# What protects releases is GitHub's configuration, not this file or the agent guard (which an agent working with the
+# owner's credentials can get around). The owner sets up, in the repository settings:
+#   - Environments > release: a required reviewer (the owner), "Deployment branches and tags" limited to tags
+#     matching v*, and the MODRINTH_TOKEN / CURSEFORGE_TOKEN secrets (only for platforms configured in
+#     gradle.properties), moved here from the repository secrets. GITHUB_TOKEN is provided automatically.
+#   - Rules > Rulesets: a tag ruleset on v* that restricts creating, updating and deleting those tags to the owner.
 name: release
 on:
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
+permissions: {}
 
 # One release at a time; a second tag waits instead of racing the first to the platforms.
 concurrency:
@@ -19,15 +25,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    # Only the repository owner's tag pushes publish: a token or agent with push access can't release on its own.
+  verify:
+    # Skips tags pushed by other accounts. It can't tell the owner from an agent using the owner's credentials: the
+    # release environment's required reviewer is what stops that.
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the branch check below needs <mc_version>/dev's history
+          persist-credentials: false # the build runs third-party code; it gets no token
       - name: Check the tag matches mod_version and is on the base branch
         run: |
           mod=$(grep '^mod_version=' gradle.properties | cut -d= -f2)
@@ -56,8 +66,29 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb mesa-vulkan-drivers
       - run: scripts/client-gametest.sh --production
         timeout-minutes: 10 # a client that can't open a window hangs instead of exiting
-      # A dry run first, so a changelog or configuration error fails before any platform gets an upload.
+      # A dry run, so a changelog or configuration error fails before any platform gets an upload.
       - run: ./gradlew publishMods
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Waits for the required reviewer, and only a v* tag may deploy to it; its secrets exist only in this job.
+    environment: release
+    permissions:
+      contents: write # the GitHub release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false # publishMods takes GITHUB_TOKEN from the environment, not from git
+      - uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'microsoft'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+      # Builds the jar again from the tagged commit verify just checked, and publishes it.
       - run: ./gradlew publishMods -Ppublish_live=true
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}

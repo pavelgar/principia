@@ -30,7 +30,8 @@ gradle_failures() {
 		echo
 		if [ -f "$report" ]; then
 			echo "Failed game tests (rerun one with ./gradlew runGameTest -Pgametest=<part of its id>):"
-			sed 's/<testcase /\n<testcase /g' "$report" | grep '<failure' \
+			# One testcase per line (awk, not sed: BSD sed can't write a newline with \n).
+			awk '{ gsub(/<testcase /, "\n<testcase "); print }' "$report" | grep '<failure' \
 				| sed -E 's/.* name="([^"]*)".*<failure message="([^"]*)".*/  \1: \2/' | head -n 20
 		else
 			echo "The game test server stopped before running the tests. From $game_log:"

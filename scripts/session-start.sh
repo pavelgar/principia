@@ -16,7 +16,9 @@ mc=$(sed -n 's/^minecraft *= *"\(.*\)"/\1/p' gradle/libs.versions.toml 2>/dev/nu
 if [ ! -f .references/VERSIONS ]; then
 	main=$(git worktree list --porcelain 2>/dev/null | awk 'NR==1 {print $2}')
 	if [ -n "$main" ] && [ "$main" != "$PWD" ] && grep -qx "minecraft=$mc" "$main/.references/VERSIONS" 2>/dev/null; then
-		cp -a --reflink=auto "$main/.references" .references 2>/dev/null && echo "Copied the .references/ reference tree from the main checkout."
+		# --reflink is GNU cp's (macOS has none): fall back to a plain copy.
+		{ cp -a --reflink=auto "$main/.references" .references 2>/dev/null || cp -a "$main/.references" .references 2>/dev/null; } \
+			&& echo "Copied the .references/ reference tree from the main checkout."
 	elif [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
 		scripts/setup.sh > /tmp/setup.log 2>&1 \
 			&& echo "Built the .references/ reference tree." \

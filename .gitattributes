@@ -1,8 +1,10 @@
 #
 # https://help.github.com/articles/dealing-with-line-endings/
 #
-# Linux start script should use lf
+# Shell scripts use lf, whatever core.autocrlf says: bash fails on a \r at the end of a line.
 /gradlew        text eol=lf
+*.sh            text eol=lf
+scripts/lib/*   text eol=lf
 
 # These are Windows script files and should use crlf
 *.bat           text eol=crlf

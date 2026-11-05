@@ -2,12 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(./gradlew *)",
-      "Bash(scripts/setup.sh*)",
-      "Bash(scripts/client-gametest.sh*)",
+      "Bash(scripts/setup.sh)",
+      "Bash(scripts/setup.sh *)",
+      "Bash(scripts/client-gametest.sh)",
+      "Bash(scripts/client-gametest.sh *)",
       "Bash(scripts/test-agent-guard.sh)",
       "Bash(scripts/check-skills.sh)",
       "Bash(scripts/stop-check.sh)",
-      "Bash(scripts/verify.sh*)",
+      "Bash(scripts/verify.sh)",
+      "Bash(scripts/verify.sh *)",
       "Bash(gh pr checks *)",
       "Bash(gh run view *)",
       "Bash(gh run download *)",
@@ -61,7 +64,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/stop-check.sh",
-            "timeout": 300
+            "timeout": 900
           }
         ]
       }

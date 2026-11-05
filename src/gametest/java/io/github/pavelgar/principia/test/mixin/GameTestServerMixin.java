@@ -25,7 +25,8 @@ import net.minecraft.gametest.framework.MultipleTestTracker;
  * different chunks and a failure can't be rerun as it was. Here they start at {@code principia.gametest.origin}
  * ({@code x,z}, by default {@code 0,0}; {@code random} for vanilla's), which is logged.</li>
  * <li>Once the results are logged and the JUnit report written, the server exits instead of saving its world for
- * about 7 seconds: the run directory is deleted before the next run anyway.</li>
+ * about 7 seconds: the run directory is deleted before the next run anyway. It exits with 1 if a required test
+ * failed.</li>
  * </ul>
  */
 @Mixin(GameTestServer.class)
@@ -49,7 +50,8 @@ abstract class GameTestServerMixin {
 		MultipleTestTracker tracker = testTracker;
 		if (tracker != null && tracker.isDone()) {
 			PRINCIPIA$LOGGER.info("Game test server exiting without saving its world");
-			System.exit(tracker.getFailedRequiredCount());
+			// 1, not the failure count: exit codes wrap at 256, so 256 failures would exit 0.
+			System.exit(tracker.getFailedRequiredCount() == 0 ? 0 : 1);
 		}
 	}
 

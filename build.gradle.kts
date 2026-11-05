@@ -129,6 +129,28 @@ if (providers.gradleProperty("dev_jbr").map(String::toBoolean).getOrElse(true)) 
 	}
 }
 
+// Environment variables that AI coding agents set in the commands they run: Claude Code sets CLAUDECODE and AI_AGENT,
+// Codex's shell tool CODEX_THREAD_ID and CODEX_CI, and its sandbox CODEX_SANDBOX(_NETWORK_DISABLED). The first one
+// set, if any; scripts/play.sh checks the same list.
+val agentVariable: Provider<String> = listOf(
+	"CLAUDECODE", "AI_AGENT", "CODEX_THREAD_ID", "CODEX_CI", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED",
+).map { variable -> providers.environmentVariable(variable).filter { it.isNotEmpty() }.map { variable } }
+	.reduce { first, next -> first.orElse(next) }
+
+// These open the game for a person to play and never exit, so they refuse to start under an agent, which would wait
+// on them forever. scripts/agent-guard.sh stops the usual spellings of the command earlier; this stops every spelling.
+tasks.withType<net.fabricmc.loom.task.RunGameTask>().matching { it.name in setOf("runClient", "runServer", "runClientRenderDoc") }.configureEach {
+	val agent = agentVariable
+	doFirst {
+		agent.orNull?.let { variable ->
+			throw GradleException(
+				"$name opens the game for a person and never exits, so it doesn't run under an AI agent ($variable is set). " +
+					"Use ./gradlew runGameTest, or scripts/client-gametest.sh to see the game (a scene: add it to PlaytestClientGameTest).",
+			)
+		}
+	}
+}
+
 fabricApi {
 	configureDataGeneration {
 		client = true
@@ -428,8 +450,12 @@ tasks.jar {
 	}
 }
 
+// A live publish needs GitHub Actions running for a pushed tag (dryRun below), and no agent's variables. Both can be
+// faked by hand: what really keeps live publishing in the release workflow is that only its `release` environment
+// holds the platform tokens.
 val releaseRun = providers.environmentVariable("GITHUB_ACTIONS").map { it == "true" }.orElse(false)
 	.zip(providers.environmentVariable("GITHUB_REF_TYPE").map { it == "tag" }.orElse(false)) { ci, tag -> ci && tag }
+	.zip(agentVariable.map { true }.orElse(false)) { release, agent -> release && !agent }
 val publishLive = providers.gradleProperty("publish_live").map { it.toBoolean() }.orElse(false)
 
 // Publishes to every platform whose project ID is set in gradle.properties.
