@@ -1,24 +1,15 @@
 ---
 name: mc-api-lookup
-description: Find the real Minecraft 26.x / Fabric API classes, methods and patterns in the local decompiled sources before writing mod code. Use before writing any code that touches a net.minecraft or net.fabricmc class, or when unsure what something is called in Mojang names.
+description: Finds the real Minecraft 26.x and Fabric API classes, methods and patterns in the local decompiled sources, with a table of house examples per task. Use before writing code that touches a net.minecraft or net.fabricmc class, or when unsure of a Mojang name.
 ---
 
 # Look up the real API
 
-Training data about Minecraft modding is mostly for older versions and Yarn names; the traps are listed in `AGENTS.md`. The local sources are the ground truth for this project.
-
-## 0. Make sure the reference tree exists and is current
-
-```bash
-cat .references/VERSIONS 2>/dev/null; grep -E '^(minecraft|fabric-api) ' gradle/libs.versions.toml
-```
-If it's missing or the versions differ, run `scripts/setup.sh`.
+The local sources are the ground truth; `AGENTS.md` lists the traps of older versions. If the session-start hook warned that `.references/` is missing or stale, run `scripts/setup.sh` first.
 
 ## 1. Find the class
 
-Always give the search a path inside `.references/`: the tree is gitignored, so ripgrep (and the Grep tool, which uses it) skips it in a repo-wide search and returns nothing.
-
-Search by file name first. Mojang names are descriptive, so guess plausible words:
+Every search names a path inside `.references/` (`AGENTS.md`, Local references, says why). Search by file name first. Mojang names are descriptive, so guess plausible words:
 ```bash
 find .references/sources -name '*Furnace*.java' | head
 ```
@@ -67,4 +58,4 @@ Docs code snippets live in `.references/fabric-docs/reference/latest/src` and ma
 
 ## 4. Verify by compiling
 
-`./gradlew compileJava compileClientJava` is the fastest way to confirm a name exists. A "cannot find symbol" error means you guessed. Go back to step 1 rather than trying variations.
+`./gradlew compileJava compileClientJava` is the fastest way to confirm a name exists. On "cannot find symbol", go back to step 1.

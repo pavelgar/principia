@@ -16,12 +16,14 @@ try (TestSingleplayerContext sp = context.worldBuilder().create()) {
 ```
 
 - Server commands have no position of their own: use absolute coordinates, or `execute at @p run ...`. For arbitrary server-side setup, `sp.getServer().runOnServer(server -> ...)`.
-- Read client state with `context.computeOnClient(client -> ...)`; the client's level is `sp.getConnection().getClientLevel()`.
+- Wait on the connection: `sp.getConnection().waitForChunksRender()`, `waitForClientboundPackets()` and their siblings in `TestServerConnection`. The Fabric docs' example still calls `getClientLevel().waitForChunksRender()` and sets `-Dfabric.client.gametest.disableNetworkSynchronizer`; Fabric API 0.161 moved the first and removed the second along with the synchronizer.
+- Read client state with `context.computeOnClient(client -> ...)`; the client's level is `sp.getConnection().getClientLevel()`, a plain `ClientLevel`.
 - The test runs after the client handles its packets and before it ticks: what the client works out each tick or frame (a target it picks, an entity's interpolated position) still shows the tick before. After waiting for a value the server syncs, `context.waitTick()` before asserting what the client derives from it; a read without it passes locally and fails on CI.
 - For screens: `context.setScreen(() -> new SomeScreen(...))`, or simulate input with `context.getInput()`, then `context.waitForScreen(SomeScreen.class)`.
 - Name each screenshot after what it shows; the files get a counter prefix.
 - `context.assertScreenshotEquals("<name>")` compares against a golden image under `src/gametest/resources/templates/`. Fonts, animations and world generation make images noisy, so it suits only static scenes.
 - Register the class under `fabric-client-gametest` in `src/gametest/resources/fabric.mod.json`.
+- A test that starts a dedicated server sets `server-port` to a free port (`freePort()` in `DedicatedServerClientGameTest`): other worktrees' tests may hold 25565.
 
 ## Recording video
 
@@ -43,6 +45,7 @@ Showcase.record(context, singleplayer.getServer(), "letting-go", () -> {
 
 - `scripts/client-gametest.sh` runs them on the dev classpath; `--production` runs the built jar with Fabric API, as CI does. Both copy the screenshots and the client log to `build/evidence/<mode>-<timestamp>/` and print that path: report it, since other run tasks (`runDatagen`) wipe `build/run/clientGameTest/`. `--only=<Class>[,<Class>]` runs only those test classes, by simple name, in either mode and with `--video`.
 - The script sets up the display (24-bit Xvfb, SDL on X11, audio muted); `scripts/agent-guard.sh` points at it if `xvfb-run` is called directly.
+- Client game tests from different worktrees run in parallel, at about 2 GB of RAM each.
 - A failed test exits non-zero; the stack trace is in the Gradle output and in the copied `client.log`.
 - Harmless log noise: authlib `401` and Realms errors (dev accounts are offline), `Illegal option value 0 for Anisotropic Filtering`, `Requested post effect does not exist: minecraft:end_of_frame`, a GPU that `does not have a graphics queue`, and narrator/flite errors in containers.
 - In CI and cloud sessions OpenGL can't get a GLX visual under Xvfb, so the client falls back to Vulkan on lavapipe (`mesa-vulkan-drivers`). Without that package the run hangs instead of failing.

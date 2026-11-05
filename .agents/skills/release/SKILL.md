@@ -1,6 +1,6 @@
 ---
 name: release
-description: Prepare a Principia release: version bump, changelog, checks and tag.
+description: Prepares a Principia release (version bump, changelog, checks, release PR) and hands the tag to the human. Run only when the human asks to cut a release.
 disable-model-invocation: true
 ---
 
