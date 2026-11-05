@@ -55,7 +55,10 @@ public final class AnchorBlock extends BaseEntityBlock implements SimpleWaterlog
 		outlines = getShapeForEachState(state -> CrossBeam.outline(state.getValue(HEADING)), WATERLOGGED);
 	}
 
-	/** A structure placed rotated or mirrored turns the anchor's heading as it moves its cells; its block entity's segments turn with it ({@link AnchorBlockEntity#transformedForStructure}). */
+	/**
+	 * A structure placed rotated or mirrored turns the anchor's heading as it moves its cells, and its segments with it
+	 * ({@link AnchorBlockEntity#turnSavedData}).
+	 */
 	@Override
 	protected BlockState rotate(BlockState state, Rotation rotation) {
 		return state.setValue(HEADING, state.getValue(HEADING).transformed(Mirror.NONE, rotation));

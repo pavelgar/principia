@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stop hook for Claude Code (.claude/settings.json) and Codex (.codex/hooks.json): when an agent ends a turn that
 # changed code, runs `./gradlew quickCheck` (format, compile every source set with Error Prone and NullAway, JUnit
-# tests; a few seconds) and, if it fails, sends the agent back to work with the first errors. Exit code 2 with the
+# tests; a few seconds, but several minutes on the first build after a version bump, which is why the hook's timeout
+# is 900 s in both tools' settings) and, if it fails, sends the agent back to work with the first errors. Exit code 2 with the
 # reason on stderr means "keep going" to both tools; exit 0 must print nothing on stdout (Codex reads it as JSON).
 #
 # It does nothing when no build input differs from HEAD, or when they are exactly as at the last passing run, so

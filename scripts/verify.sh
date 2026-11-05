@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # The definition of done: runs what CI (.github/workflows/build.yml) runs on a PR, on this checkout as it is, and ends
-# with one line, `RESULT: PASS`, `RESULT: FAIL <steps>` or `RESULT: INCOMPLETE <steps>`, and the same as JSON in
-# build/verify/verify.json. Each step's full output is in build/verify/<step>.log; on failure the first errors are
-# printed. Exit code: 0 PASS, 1 FAIL, 3 INCOMPLETE.
+# with one line, `RESULT: PASS`, `RESULT: FAIL <steps>` or `RESULT: INCOMPLETE <steps>`. Each step's full output is in
+# build/verify/<step>.log; on failure the first errors are printed. Exit code: 0 PASS, 1 FAIL, 3 INCOMPLETE.
 #
 #   scripts/verify.sh                   client game tests only if the change reaches them, as in CI
 #   scripts/verify.sh --client          client game tests whatever changed
 #   scripts/verify.sh --no-client       without them: INCOMPLETE at best
 #   scripts/verify.sh --base=<ref>      what the change is measured from (default: where HEAD left origin/<mc>/dev)
 #
-# Steps, in CI's order: the repo's self-checks (skills, agent guard), `./gradlew build` (compile with Error Prone and
-# NullAway, JUnit, fuzz replay, server game tests and their log check, formatting, jar), datagen output up to date,
-# and the client game tests against the built jar (`scripts/client-gametest.sh --production`).
+# Steps, in CI's order: no build input that CI wouldn't see (untracked or gitignored), the repo's self-checks (skills,
+# agent guard), `./gradlew build` (compile with Error Prone and NullAway, JUnit, fuzz replay, server game tests and
+# their log check, formatting, jar), datagen output up to date, and the client game tests against the built jar
+# (`scripts/client-gametest.sh --production`). Edits to tracked files may stay uncommitted: they get committed.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 . scripts/lib/failures.sh
@@ -54,16 +54,30 @@ if [ "$client" = auto ]; then
 	if [ -z "$fork" ] || grep -qEf "$client_paths" <<< "$changed"; then client=always; else client=no-change; fi
 fi
 
-names=() statuses=() times=() notes=()
 record() { # record <step> <PASS|FAIL|SKIP> <seconds> <note>
-	names+=("$1") statuses+=("$2") times+=("$3") notes+=("$4")
 	printf '%-5s %-12s %5ss  %s\n' "$2" "$1" "$3" "$4"
 }
 elapsed() { echo $(($(date +%s) - $1)); }
 failed=()
 details=
 
-# 1. The repo's self-checks.
+# 1. Build inputs CI wouldn't see: this checkout builds them, CI checks out only what is committed. Untracked files
+# (a new class or resource not yet added), and files under src/ that .gitignore hides, except the datagen cache.
+start=$(date +%s)
+unseen=$( {
+	git ls-files --others --exclude-standard -- src gradle build.gradle.kts settings.gradle.kts gradle.properties gradlew \
+		scripts .agents .claude/skills
+	git ls-files --others --ignored --exclude-standard -- src | grep -v '^src/main/generated/\.cache/'
+} | sort -u)
+if [ -z "$unseen" ]; then
+	record untracked PASS "$(elapsed "$start")" ""
+else
+	record untracked FAIL "$(elapsed "$start")" "$(grep -c . <<< "$unseen") files CI wouldn't see"
+	failed+=(untracked)
+	details+=$'\n'"untracked: CI checks out only committed files, so it wouldn't see these; git add or delete them:"$'\n'"$(head -n 20 <<< "$unseen" | sed 's|^|  |')"$'\n'
+fi
+
+# 2. The repo's self-checks.
 start=$(date +%s)
 if { scripts/check-skills.sh && scripts/test-agent-guard.sh; } > "$out/self-checks.log" 2>&1; then
 	record self-checks PASS "$(elapsed "$start")" ""
@@ -73,7 +87,7 @@ else
 	details+=$'\n'"self-checks:"$'\n'"$(grep -E 'FAIL|missing|not a symlink|error' "$out/self-checks.log" | head -n 20)"$'\n'
 fi
 
-# 2. The build, with --continue so that one run shows every independent failure.
+# 3. The build, with --continue so that one run shows every independent failure.
 start=$(date +%s)
 if ./gradlew build --continue --console=plain > "$out/build.log" 2>&1; then
 	record build PASS "$(elapsed "$start")" ""
@@ -88,9 +102,10 @@ fi
 compiled=1
 grep -qE '^> Task :compile[A-Za-z]*Java FAILED' "$out/build.log" && compiled=0
 
-# 3. Datagen output up to date: running the providers changes nothing under src/main/generated. If it does, the
+# 4. Datagen output up to date: running the providers changes nothing under src/main/generated. If it does, the
 # files are now updated in place, to review and commit.
-generated() { find src/main/generated -type f -print0 | sort -z | xargs -0 sha1sum; }
+# The committed files only: the gitignored .cache appears with the first run, which would read as a change.
+generated() { find src/main/generated -path src/main/generated/.cache -prune -o -type f -print0 | sort -z | xargs -0 sha1sum; }
 start=$(date +%s)
 if ((compiled)); then
 	generated > "$out/generated.before"
@@ -105,7 +120,7 @@ if ((compiled)); then
 			record datagen FAIL "$(elapsed "$start")" "src/main/generated was stale; runDatagen has now updated it"
 			failed+=(datagen)
 			# The files only before (removed or changed) or only after (added or changed): 40 hex digits, 2 spaces.
-			stale=$(comm -3 <(sort "$out/generated.before") <(sort "$out/generated.after") | sed 's/^\t//' | cut -c43- | sort -u | head -n 20 | sed "s|^|  |")
+			stale=$(comm -3 <(sort "$out/generated.before") <(sort "$out/generated.after") | tr -d '\t' | cut -c43- | sort -u | head -n 20 | sed "s|^|  |")
 			details+=$'\n'"datagen: a provider changed but src/main/generated wasn't regenerated. runDatagen just did; review and commit these:"$'\n'"$stale"$'\n'
 		fi
 	else
@@ -117,7 +132,7 @@ else
 	record datagen SKIP 0 "the code doesn't compile"
 fi
 
-# 4. The client game tests against the built jar, as CI runs them.
+# 5. The client game tests against the built jar, as CI runs them.
 evidence=
 start=$(date +%s)
 if [ "$client" = never ]; then
@@ -152,17 +167,8 @@ elif ((${skipped:-0})); then
 else
 	result=PASS
 fi
-uncommitted=$(git status --porcelain --untracked-files=normal | grep -c .)
-((uncommitted)) && echo "Note: $uncommitted uncommitted or untracked paths; CI checks only what is committed and pushed."
-
-steps=$(for i in "${!names[@]}"; do
-	jq -n --arg name "${names[$i]}" --arg status "${statuses[$i]}" --argjson seconds "${times[$i]}" --arg note "${notes[$i]}" \
-		'{name: $name, status: $status, seconds: $seconds, note: $note}'
-done | jq -s .)
-jq -n --arg result "$result" --arg base "$base_desc" --argjson steps "$steps" --arg evidence "$evidence" \
-	--argjson uncommitted "$uncommitted" --arg failed "${failed[*]}" \
-	'{result: $result, failed: ($failed | split(" ") | map(select(. != ""))), base: $base, steps: $steps,
-	  evidence: (if $evidence == "" then null else $evidence end), uncommitted: $uncommitted}' > "$out/verify.json"
+uncommitted=$(git status --porcelain --untracked-files=no | grep -c .)
+((uncommitted)) && echo "Note: $uncommitted tracked files have uncommitted changes; CI checks only what is committed and pushed."
 
 case $result in
 	PASS) echo "RESULT: PASS" && exit 0 ;;

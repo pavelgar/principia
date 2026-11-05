@@ -14,7 +14,7 @@
 # and mute OpenAL so test runs stay invisible and silent.
 set -uo pipefail
 shopt -s nullglob
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 task=runClientGameTest run_dir=build/run/clientGameTest name=client-gametest video=
 for arg in "$@"; do

@@ -1,5 +1,6 @@
 package io.github.pavelgar.principia.test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -14,9 +15,12 @@ import io.github.pavelgar.principia.skyline.SegmentIndex;
 import io.github.pavelgar.principia.skyline.Track;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.SectionPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.gametest.framework.GameTestSequence;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntArrayTag;
 import net.minecraft.server.MinecraftServer;
@@ -25,11 +29,13 @@ import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import net.minecraft.world.level.storage.TagValueInput;
@@ -47,55 +53,147 @@ public class SkyLineSegmentGameTest {
 	/** Level, 5 east from (2, 3, 4): rails along x at z = 3.5 and 5.5, their tops at y = 4, from x = 2.5 to 7.5. */
 	private static final BlockPos STRAIGHT_FROM = new BlockPos(2, 3, 4);
 	private static final Segment STRAIGHT = segment(new Vec3i(5, 0, 0), Heading.EAST, 0, Heading.EAST, 0);
+	/**
+	 * Level and east, as long as saved data allows ({@link Segment.Partner#MAX_SAVED_OFFSET}), far past the limits,
+	 * which only placing checks. Its anchors are 32 chunks apart: a forced chunk keeps the 13 around it in memory (up
+	 * to {@code ChunkLevel.MAX_LEVEL}), so with one end forced, the other's chunk unloads.
+	 */
+	private static final Segment APART = segment(new Vec3i(Segment.Partner.MAX_SAVED_OFFSET, 0, 0), Heading.EAST, 0,
+			Heading.EAST, 0);
 	/** A 16 × 10 × 16 area, for tests that need more room than the default one. */
 	private static final String WIDE = "principia-test:sky_line";
+	/** A segment that bends, from an anchor at (2, 3, 2) heading east, pitched up, to one heading south-east. */
+	private static final BlockPos BEND_FROM = new BlockPos(2, 3, 2);
+	private static final Segment BEND = segment(new Vec3i(4, 0, 2), Heading.EAST, 10, Heading.SOUTH_EAST, 0);
+	/** The north-west corner of the 7 × 1 × 5 cells around {@link #BEND}, its anchors' beam ends among them. */
+	private static final BlockPos BEND_CORNER = new BlockPos(1, 3, 1);
+	/** A cell beside {@link #BEND} that no beam end takes. */
+	private static final BlockPos CHEST = new BlockPos(4, 3, 1);
+	/** Where copies of the cells around {@link #BEND} go: above it, and in the area however they turn. */
+	private static final BlockPos COPY_AT = new BlockPos(8, 6, 8);
 
 	/**
-	 * A structure holding a segment that bends, from an anchor at (2, 3, 2) heading east and pitched up to one 4 east
-	 * and 2 south heading south-east, saved from the level with both anchors' beam ends, and placed mirrored left to
-	 * right and turned a quarter clockwise, which together swap x and z. Vanilla turns the anchors' blocks and loads
-	 * their saved data unchanged: the segments turn with them, so at the end of the tick, when the copies are checked
-	 * against each other, both still hold it, as one segment between where the two anchors went.
+	 * A structure holding a segment that bends and a chest holding 3 diamonds, saved from the level with both anchors'
+	 * beam ends, and placed in every mirror and rotation in turn, above the original. Vanilla turns the blocks and
+	 * loads their saved data unchanged: the segment turns with its anchors, so at the end of the tick, when the copies
+	 * are checked against each other, both still hold it, between where vanilla moved the two anchors and leaving and
+	 * arriving as vanilla turns the original's headings. The chest loads its data as saved. Each placement turns the
+	 * structure's data afresh: the structure keeps it as saved.
+	 */
+	@GameTest(structure = WIDE, maxTicks = 60)
+	public void aSegmentTurnsWithAStructurePlacedEveryWay(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
+		lay(helper, BEND_FROM, BEND);
+		helper.setBlock(CHEST, Blocks.CHEST);
+		helper.getBlockEntity(CHEST, ChestBlockEntity.class).setItem(0, new ItemStack(Items.DIAMOND, 3));
+		StructureTemplate template = bendStructure(helper);
+
+		GameTestSequence sequence = helper.startSequence();
+		for (Mirror mirror : Mirror.values()) {
+			for (Rotation rotation : Rotation.values()) {
+				sequence.thenExecute(() -> placeCopy(helper, template, mirror, rotation))
+						.thenIdle(1) // past the end of the tick the copies loaded in, when they are checked
+						.thenExecute(() -> {
+							assertBendCopied(helper, mirror, rotation);
+							helper.assertTrue(level.getBlockEntity(copied(helper, CHEST, mirror,
+									rotation)) instanceof ChestBlockEntity chest
+									&& ItemStack.matches(chest.getItem(0), new ItemStack(Items.DIAMOND, 3)),
+									mirror + ", " + rotation + ": the copied chest is gone or lost its diamonds");
+							BlockPos min = helper.absolutePos(COPY_AT).offset(-7, 0, -7);
+							BlockPos max = helper.absolutePos(COPY_AT).offset(7, 0, 7);
+							command(helper, "fill %d %d %d %d %d %d air".formatted(min.getX(), min.getY(),
+									min.getZ(), max.getX(), max.getY(), max.getZ()));
+						})
+						.thenIdle(1);
+			}
+		}
+		sequence.thenExecute(() -> helper.assertValueEqual(anchorAt(level, helper.absolutePos(BEND_FROM)).segments(),
+				List.of(BEND), "the original's segments")).thenSucceed();
+	}
+
+	/**
+	 * The block entity a structure places, not the id saved with its data, decides whether its data turns: the
+	 * structure of {@link #aSegmentTurnsWithAStructurePlacedEveryWay} with its block entities' ids taken out, placed
+	 * mirrored front to back and turned half round, still copies the segment.
 	 */
 	@GameTest(structure = WIDE, maxTicks = 20)
-	public void aSegmentTurnsWithAStructurePlacedMirroredAndRotated(GameTestHelper helper) {
-		ServerLevel level = helper.getLevel();
-		BlockPos from = new BlockPos(2, 3, 2);
-		Segment bend = segment(new Vec3i(4, 0, 2), Heading.EAST, 10, Heading.SOUTH_EAST, 0);
-		lay(helper, from, bend);
-		BlockPos corner = new BlockPos(1, 3, 1);
-		StructureTemplate template = new StructureTemplate();
-		template.fillFromWorld(level, helper.absolutePos(corner), new Vec3i(7, 1, 5), false, List.of());
-		StructurePlaceSettings settings = new StructurePlaceSettings().setMirror(Mirror.LEFT_RIGHT)
-				.setRotation(Rotation.CLOCKWISE_90);
-		BlockPos at = helper.absolutePos(new BlockPos(9, 3, 8));
-		template.placeInWorld(level, at, at, settings, level.getRandom(), Block.UPDATE_CLIENTS);
-		// Where vanilla moved each anchor's cell to.
-		BlockPos copiedFrom = at.offset(StructureTemplate.transform(from.subtract(corner), Mirror.LEFT_RIGHT,
-				Rotation.CLOCKWISE_90, BlockPos.ZERO));
-		BlockPos copiedTo = at.offset(StructureTemplate.transform(from.offset(bend.offset()).subtract(corner),
-				Mirror.LEFT_RIGHT, Rotation.CLOCKWISE_90, BlockPos.ZERO));
+	public void anAnchorsDataTurnsWithAStructureWithoutItsId(GameTestHelper helper) {
+		lay(helper, BEND_FROM, BEND);
+		CompoundTag saved = bendStructure(helper).save(new CompoundTag());
+		saved.getListOrEmpty(StructureTemplate.BLOCKS_TAG).compoundStream().forEach(
+				block -> block.getCompound(StructureTemplate.BLOCK_TAG_NBT).ifPresent(data -> data.remove("id")));
+		StructureTemplate withoutIds = new StructureTemplate();
+		withoutIds.load(helper.getLevel().holderLookup(Registries.BLOCK), saved);
+		placeCopy(helper, withoutIds, Mirror.FRONT_BACK, Rotation.CLOCKWISE_180);
 
 		helper.startSequence()
 				.thenIdle(1) // past the end of the tick the copies loaded in, when they are checked
-				.thenExecute(() -> {
-					List<Segment> held = anchorAt(level, copiedFrom).segments();
-					helper.assertValueEqual(held.size(), 1, "the segments the copy of the west anchor holds");
-					Segment turned = held.getFirst();
-					helper.assertValueEqual(copiedFrom.offset(turned.offset()), copiedTo, "where its partner is");
-					helper.assertValueEqual(anchorAt(level, copiedTo).segments(), List.of(turned.reversed()),
-							"the copy of the east anchor's segments");
-					// Mirrored and turned, east becomes south and south-east stays.
-					helper.assertValueEqual(turned.from().tangent(), new AnchorTangent(Heading.SOUTH, 10),
-							"the turned segment's start");
-					helper.assertValueEqual(turned.to().tangent().heading(), Heading.SOUTH_EAST,
-							"the turned segment's end heading");
-					helper.assertValueEqual(trackBetween(level, copiedFrom, copiedTo),
-							List.of(new SegmentIndex.Held(copiedFrom, turned)), "the track between the copies");
-					helper.assertValueEqual(anchorAt(level, helper.absolutePos(from)).segments(), List.of(bend),
-							"the original's segments");
-				})
+				.thenExecute(() -> assertBendCopied(helper, Mirror.FRONT_BACK, Rotation.CLOCKWISE_180))
 				.thenSucceed();
+	}
+
+	/** {@link #BEND} and the cells around it, from {@link #BEND_CORNER}, as a structure. */
+	private static StructureTemplate bendStructure(GameTestHelper helper) {
+		StructureTemplate template = new StructureTemplate();
+		template.fillFromWorld(helper.getLevel(), helper.absolutePos(BEND_CORNER), new Vec3i(7, 1, 5), false,
+				List.of());
+		return template;
+	}
+
+	/** Places a structure of the cells from {@link #BEND_CORNER} at {@link #COPY_AT}, mirrored, then rotated. */
+	private static void placeCopy(GameTestHelper helper, StructureTemplate template, Mirror mirror,
+			Rotation rotation) {
+		ServerLevel level = helper.getLevel();
+		BlockPos at = helper.absolutePos(COPY_AT);
+		template.placeInWorld(level, at, at, new StructurePlaceSettings().setMirror(mirror).setRotation(rotation),
+				level.getRandom(), Block.UPDATE_CLIENTS);
+	}
+
+	/** Where vanilla moves a cell of the structure from {@link #BEND_CORNER} placed by {@link #placeCopy}. */
+	private static BlockPos copied(GameTestHelper helper, BlockPos pos, Mirror mirror, Rotation rotation) {
+		return helper.absolutePos(COPY_AT)
+				.offset(StructureTemplate.transform(pos.subtract(BEND_CORNER), mirror, rotation, BlockPos.ZERO));
+	}
+
+	/**
+	 * Asserts that the copies of {@link #BEND}'s anchors placed by {@link #placeCopy} hold one segment between them,
+	 * leaving and arriving along the original's headings as vanilla turns a direction, and that the track holds it.
+	 */
+	private static void assertBendCopied(GameTestHelper helper, Mirror mirror, Rotation rotation) {
+		ServerLevel level = helper.getLevel();
+		String turn = mirror + ", " + rotation + ": ";
+		BlockPos copiedFrom = copied(helper, BEND_FROM, mirror, rotation);
+		BlockPos copiedTo = copied(helper, BEND_FROM.offset(BEND.offset()), mirror, rotation);
+		List<Segment> held = anchorAt(level, copiedFrom).segments();
+		helper.assertValueEqual(held.size(), 1, turn + "the segments the copy of the west anchor holds");
+		Segment turned = held.getFirst();
+		helper.assertValueEqual(copiedFrom.offset(turned.offset()), copiedTo, turn + "where its partner is");
+		helper.assertValueEqual(anchorAt(level, copiedTo).segments(), List.of(turned.reversed()),
+				turn + "the copy of the east anchor's segments");
+		helper.assertValueEqual(turned.from().tangent(), new AnchorTangent(turnedBy(Heading.EAST, mirror, rotation),
+				BEND.from().tangent().pitch()), turn + "the copy's start");
+		helper.assertValueEqual(turned.to().tangent(),
+				new AnchorTangent(turnedBy(Heading.SOUTH_EAST, mirror, rotation), BEND.to().tangent().pitch()),
+				turn + "the copy's end");
+		// The track gives a segment as its anchor first in BlockPos order stores it.
+		SegmentIndex.Held indexed = copiedFrom.compareTo(copiedTo) < 0
+				? new SegmentIndex.Held(copiedFrom, turned)
+				: new SegmentIndex.Held(copiedTo, turned.reversed());
+		helper.assertValueEqual(trackBetween(level, copiedFrom, copiedTo), List.of(indexed),
+				turn + "the track between the copies");
+	}
+
+	/** A heading as vanilla turns a direction, mirrored, then rotated: each of its steps along x and z turned. */
+	private static Heading turnedBy(Heading heading, Mirror mirror, Rotation rotation) {
+		Vec3i east = rotation.rotate(mirror.mirror(Direction.EAST)).getUnitVec3i();
+		Vec3i south = rotation.rotate(mirror.mirror(Direction.SOUTH)).getUnitVec3i();
+		Vec3i step = east.multiply(heading.step().getX()).offset(south.multiply(heading.step().getZ()));
+		for (Heading turned : Heading.values()) {
+			if (turned.step().equals(step)) {
+				return turned;
+			}
+		}
+		throw new IllegalStateException("no heading along " + step);
 	}
 
 	/**
@@ -120,20 +218,23 @@ public class SkyLineSegmentGameTest {
 	/**
 	 * Saved data can hold any offset, from {@code /data} or a structure file, and the track indexes every chunk section
 	 * in a segment's bounding box: 30 million blocks off along two axes, trillions of them. The anchor refuses a partner
-	 * that far as it loads, and holds no segment there. (East only here, 1.9 million sections, so that a regression
-	 * fails the test rather than hanging the run.)
+	 * that far as it loads, and holds no segment there: 30 million east (1.9 million sections, so that a regression
+	 * fails the test rather than hanging the run), or 512 east and 65 south, past what saved data allows along two axes.
 	 */
 	@GameTest
 	public void anAnchorRefusesASavedPartnerTooFarAway(GameTestHelper helper) {
 		lay(helper, STRAIGHT_FROM, STRAIGHT);
 		AnchorBlockEntity west = helper.getBlockEntity(STRAIGHT_FROM, AnchorBlockEntity.class);
-		CompoundTag saved = west.saveCustomOnly(helper.getLevel().registryAccess());
-		CompoundTag front = saved.getCompound("front").orElseThrow();
-		front.put("offset", new IntArrayTag(new int[]{30_000_000, 0, 0}));
+		for (int[] tooFar : new int[][]{{30_000_000, 0, 0}, {512, 0, 65}}) {
+			CompoundTag saved = west.saveCustomOnly(helper.getLevel().registryAccess());
+			saved.getCompound("front").orElseThrow().put("offset", new IntArrayTag(tooFar));
 
-		west.loadCustomOnly(
-				TagValueInput.create(ProblemReporter.DISCARDING, helper.getLevel().registryAccess(), saved));
-		helper.assertValueEqual(west.segments(), List.of(), "the segments loaded with a partner 30 million east");
+			west.loadCustomOnly(
+					TagValueInput.create(ProblemReporter.DISCARDING, helper.getLevel().registryAccess(), saved));
+			helper.assertValueEqual(west.segments(), List.of(),
+					"the segments loaded with a partner " + Arrays.toString(tooFar) + " away");
+			west.setSegment(STRAIGHT);
+		}
 		helper.succeed();
 	}
 
@@ -285,7 +386,7 @@ public class SkyLineSegmentGameTest {
 	public void anchorsAndTheTrackStillHoldASegmentAfterItsChunkReloads(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
 		Segment pitched = segment(new Vec3i(5, 0, 0), Heading.EAST, 30, Heading.EAST, 0);
-		BlockPos from = farChunk(helper, 40, 0).offset(2, 0, 4);
+		BlockPos from = farChunk(helper, 1, 0).offset(2, 0, 4);
 		BlockPos to = from.offset(pitched.offset());
 		setForced(level, from, true);
 		layAt(level, from, pitched);
@@ -314,19 +415,18 @@ public class SkyLineSegmentGameTest {
 	}
 
 	/**
-	 * A segment 512 blocks long, far past the limits (which only placing checks), so that its east anchor's chunk
-	 * unloads while the west one's stays forced. A forced chunk keeps those within 2 of it loaded, and one 6 chunks
-	 * away never unloaded in this test. The west anchor is removed while the east one is unloaded, which holds the
-	 * segment until it loads and finds no anchor there. Left with no segment, it stays, alone.
+	 * {@link #APART}, whose east anchor's chunk unloads while the west one's stays forced. The west anchor is removed
+	 * while the east one is unloaded, which holds the segment until it loads and finds no anchor there. Left with no
+	 * segment, it stays, alone.
 	 */
 	@GameTest(maxTicks = 300)
 	public void anAnchorWhosePartnerWentWhileItWasUnloadedDropsTheSegmentWhenItLoads(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
-		BlockPos west = farChunk(helper, 0, 80).offset(2, 0, 4);
-		BlockPos east = west.east(512);
+		BlockPos west = farChunk(helper, 0, 1).offset(2, 0, 4);
+		BlockPos east = west.offset(APART.offset());
 		setForced(level, west, true);
 		setForced(level, east, true);
-		layAt(level, west, segment(new Vec3i(512, 0, 0), Heading.EAST, 0, Heading.EAST, 0));
+		layAt(level, west, APART);
 		AnchorBlockEntity eastBefore = anchorAt(level, east);
 		setForced(level, east, false);
 
@@ -352,12 +452,11 @@ public class SkyLineSegmentGameTest {
 	@GameTest(maxTicks = 300)
 	public void aSegmentChangedWhileItsPartnerWasUnloadedIsDroppedWhenThePartnerLoads(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
-		BlockPos west = farChunk(helper, 0, -80).offset(2, 0, 4);
-		BlockPos east = west.east(512);
+		BlockPos west = farChunk(helper, 0, -1).offset(2, 0, 4);
+		BlockPos east = west.offset(APART.offset());
 		setForced(level, west, true);
 		setForced(level, east, true);
-		Segment level512 = segment(new Vec3i(512, 0, 0), Heading.EAST, 0, Heading.EAST, 0);
-		layAt(level, west, level512);
+		layAt(level, west, APART);
 		AnchorBlockEntity eastBefore = anchorAt(level, east);
 		setForced(level, east, false);
 
@@ -368,8 +467,8 @@ public class SkyLineSegmentGameTest {
 					AnchorBlockEntity changed = anchorAt(level, west);
 					changed.removeSegment(AnchorSide.FRONT);
 					changed.setPitch(10);
-					changed.setSegment(new Segment(level512.offset(),
-							new Segment.End(new AnchorTangent(Heading.EAST, 10), AnchorSide.FRONT), level512.to()));
+					changed.setSegment(new Segment(APART.offset(),
+							new Segment.End(new AnchorTangent(Heading.EAST, 10), AnchorSide.FRONT), APART.to()));
 					setForced(level, east, true);
 				})
 				.thenWaitUntil(() -> {
@@ -442,16 +541,25 @@ public class SkyLineSegmentGameTest {
 	}
 
 	/**
-	 * The north-west corner, at the test's height plus 3, of a chunk far from the test's, loaded only while forced.
-	 * The tests sit a few chunks apart, so each test that uses one goes its own way, and a forced chunk keeps no other
-	 * test's chunk loaded.
+	 * The north-west corner, at the test's height plus 3, of a chunk far from every test, loaded only while forced.
+	 * Each copy of a test gets its own ({@code -Pgametest_repeat} lays copies a structure's width apart): the chunk is
+	 * {@link #SPREAD} chunks out for each block the test is from the world's origin, so the chunks of two copies, and
+	 * an {@link #APART} segment's other end, stay further apart than the 13 chunks a forced chunk keeps loaded around
+	 * it. Tests that use one go different ways, by {@link #FAR} chunks east or south.
 	 */
-	private static BlockPos farChunk(GameTestHelper helper, int chunksEast, int chunksSouth) {
+	private static BlockPos farChunk(GameTestHelper helper, int east, int south) {
 		BlockPos origin = helper.absolutePos(BlockPos.ZERO);
-		return new BlockPos(SectionPos.sectionToBlockCoord(SectionPos.blockToSectionCoord(origin.getX()) + chunksEast),
-				origin.getY() + 3,
-				SectionPos.sectionToBlockCoord(SectionPos.blockToSectionCoord(origin.getZ()) + chunksSouth));
+		int x = SPREAD * Math.floorMod(origin.getX(), WRAP) + east * FAR;
+		int z = SPREAD * Math.floorMod(origin.getZ(), WRAP) + south * FAR;
+		return new BlockPos(SectionPos.sectionToBlockCoord(x), origin.getY() + 3, SectionPos.sectionToBlockCoord(z));
 	}
+
+	/** Chunks between the far chunks of two tests a block apart: copies are 13 or more blocks apart. */
+	private static final int SPREAD = 4;
+	/** Chunks between the far chunks of different tests. */
+	private static final int FAR = 1 << 15;
+	/** Where test positions wrap, in blocks, keeping far chunks inside the world border with a random origin. */
+	private static final int WRAP = 1 << 16;
 
 	/**
 	 * Asserts that an anchor's chunk has unloaded, which removes its block entity. A server unloads the chunks no

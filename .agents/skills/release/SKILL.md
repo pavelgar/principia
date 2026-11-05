@@ -6,7 +6,9 @@ disable-model-invocation: true
 
 # Cut a release
 
-Pushing the tag publishes to Modrinth, CurseForge and GitHub.
+Pushing the tag publishes to Modrinth, CurseForge and GitHub, once the human approves the workflow's `publish` job.
+
+What keeps releases the human's is GitHub's configuration, not the agent guard. If `gh api repos/{owner}/{repo}/environments/release` finds no `release` environment, tell the human before step 1 to set it up as the header of `.github/workflows/release.yml` lists: the environment with themselves as required reviewer, deployments limited to `v*` tags, and the `MODRINTH_TOKEN` / `CURSEFORGE_TOKEN` secrets moved into it; and a tag ruleset on `v*` that only they may bypass.
 
 1. Confirm the target version with the human (SemVer; `0.x` releases are published as beta).
 2. On a release branch (`<mc_version>/release-x.y.z`, from the up-to-date `<mc_version>/dev`):
@@ -19,4 +21,4 @@ Pushing the tag publishes to Modrinth, CurseForge and GitHub.
    ```bash
    git switch <mc_version>/dev && git pull && git tag v<mod_version>+<mc_version> && git push origin v<mod_version>+<mc_version>
    ```
-   The `release` workflow verifies that the tag matches `v<mod_version>+<minecraft version>` and is on `<mc_version>/dev`, runs the build and the production client game tests, and publishes.
+   The `release` workflow's `verify` job checks that the tag matches `v<mod_version>+<minecraft version>` and is on `<mc_version>/dev`, runs the build, the production client game tests and a publishing dry run; its `publish` job then waits in the `release` environment for the human to approve it in the Actions tab, and publishes.

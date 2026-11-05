@@ -11,8 +11,8 @@ permissions:
 
 jobs:
   title:
-    # An edit to the description alone leaves the title as it was checked.
-    if: github.event.action != 'edited' || github.event.changes.title
+    # No job-level `if` to skip description-only edits: a required check that is skipped counts as passing, so a
+    # bad title would then merge after any edit of the description.
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:

@@ -75,7 +75,7 @@ public final class BeamEndBlock extends Block implements SimpleWaterloggedBlock 
 		return there.is(SkyLine.ANCHOR) && AnchorBlock.reachesInto(there, anchor, pos) ? anchor : null;
 	}
 
-	/** A structure placed rotated or mirrored turns the end's heading as it moves its cells, so it still points at its anchor. */
+	/** A structure placed rotated or mirrored turns the end's heading with its cells: it still points at its anchor. */
 	@Override
 	protected BlockState rotate(BlockState state, Rotation rotation) {
 		return state.setValue(ANCHOR, state.getValue(ANCHOR).transformed(Mirror.NONE, rotation));

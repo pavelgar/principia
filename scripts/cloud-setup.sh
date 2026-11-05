@@ -62,7 +62,7 @@ GRADLE
 # if the repo is present. Anything unfinished happens on first use in the session instead.
 repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
 if [ -n "$repo" ] && [ -x "$repo/gradlew" ]; then
-	cd "$repo"
+	cd "$repo" || exit 1
 	timeout 150 ./gradlew --console=plain build downloadAssets || echo "cache warm-up incomplete; continuing"
 	timeout 60 scripts/setup.sh || echo ".references/ not built yet; the session-start hook builds it"
 	./gradlew --stop >/dev/null 2>&1 || true
